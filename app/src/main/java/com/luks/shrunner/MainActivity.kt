@@ -10,7 +10,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.provider.Settings
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -18,6 +17,7 @@ import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.*
 import java.io.*
+import java.util.Comparator
 
 class MainActivity : Activity() {
 
@@ -35,16 +35,13 @@ class MainActivity : Activity() {
     private var currentPermissionOctal: String = "777"
     private var currentPermissionSymbolic: String = "rwxrwxrwx"
 
-    // Opções do painel estilo MT Manager
     private var useRootPriv: Boolean = true
     private var useShizukuPriv: Boolean = false
     private var useExtensionEnv: Boolean = false
 
-    // Controle do terminal interativo
     private var activeProcess: Process? = null
     private var processOutputStream: OutputStream? = null
 
-    // Cores LUKS STORE
     private val bgDarkPurple = Color.parseColor("#0F051D")
     private val cardPurple = Color.parseColor("#1E0B36")
     private val primaryPurple = Color.parseColor("#7B1FA2")
@@ -63,7 +60,6 @@ class MainActivity : Activity() {
             setPadding(25, 25, 25, 25)
         }
 
-        // Cabeçalho LUKS STORE
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = createRoundedBg(cardPurple, neonPurple, 20f, 3)
@@ -93,7 +89,6 @@ class MainActivity : Activity() {
         headerLayout.addView(title)
         headerLayout.addView(subtitle)
 
-        // Botão de Upload (Escolhe Gerenciador Próprio ou do Sistema)
         val btnSelect = Button(this).apply {
             text = "📁 FAZER UPLOAD / ESCOLHER ARQUIVO .SH"
             setTextColor(Color.WHITE)
@@ -105,7 +100,6 @@ class MainActivity : Activity() {
             )
         }
 
-        // Informações do arquivo e permissão atual
         val infoLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(5, 10, 5, 10)
@@ -126,7 +120,6 @@ class MainActivity : Activity() {
         infoLayout.addView(txtFileName)
         infoLayout.addView(txtPermStatus)
 
-        // Barra de Botões (Executar, Permissões 777, Parar, Limpar)
         val btnLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             weightSum = 4f
@@ -185,11 +178,10 @@ class MainActivity : Activity() {
         btnLayout.addView(btnStop)
         btnLayout.addView(btnClear)
 
-        // Painel do Terminal
         txtTerminal = TextView(this).apply {
             text = "=== [ LUKS STORE TERMINAL ] ===\n" +
-                   "• Todos os scripts são transportados para /data/local/tmp/\n" +
-                   "• Suporte a Root (su) e Shizuku (rish/adb)\n\n"
+                    "• Todos os scripts são transportados para /data/local/tmp/\n" +
+                    "• Suporte a Root (su) e Shizuku (rish/adb)\n\n"
             setTextColor(Color.parseColor("#E040FB"))
             typeface = Typeface.MONOSPACE
             textSize = 13f
@@ -206,7 +198,6 @@ class MainActivity : Activity() {
             addView(txtTerminal)
         }
 
-        // Barra Inferior para Digitar no Terminal (Opções 1, 2, etc.)
         val inputLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -251,7 +242,6 @@ class MainActivity : Activity() {
 
         setContentView(mainLayout)
 
-        // Eventos dos botões
         btnSelect.setOnClickListener {
             showChooseFileManagerDialog()
         }
@@ -299,22 +289,32 @@ class MainActivity : Activity() {
         }
     }
 
-    // Solicita permissão total de arquivos no Android 11+ para nenhum .sh sumir
     private fun requestStorageAccessIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                try {
-                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+        try {
+            if (Build.VERSION.SDK_INT >= 23) {
+                requestPermissions(
+                    arrayOf(
+                        "android.permission.READ_EXTERNAL_STORAGE",
+                        "android.permission.WRITE_EXTERNAL_STORAGE"
+                    ), 101
+                )
+            }
+            if (Build.VERSION.SDK_INT >= 30) {
+                val isManager = try {
+                    val m = Environment::class.java.getMethod("isExternalStorageManager")
+                    m.invoke(null) as Boolean
+                } catch (_: Exception) {
+                    true
+                }
+                if (!isManager) {
+                    val intent = Intent("android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION")
                     intent.data = Uri.parse("package:$packageName")
                     startActivity(intent)
-                } catch (_: Exception) {}
+                }
             }
-        }
+        } catch (_: Exception) {}
     }
 
-    // =========================================================================
-    // 1. ESCOLHA DO GERENCIADOR DE ARQUIVOS (PRÓPRIO OU DO SISTEMA)
-    // =========================================================================
     private fun showChooseFileManagerDialog() {
         val options = arrayOf(
             "🟣 Gerenciador LUKS STORE (Interno - Não esconde .sh)",
@@ -344,9 +344,6 @@ class MainActivity : Activity() {
             .show()
     }
 
-    // =========================================================================
-    // 2. GERENCIADOR DE ARQUIVOS PRÓPRIO (ESTILO MT MANAGER)
-    // =========================================================================
     private fun showBuiltInFileManager(directory: File) {
         val dialogLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -362,7 +359,6 @@ class MainActivity : Activity() {
             setPadding(0, 0, 0, 15)
         }
 
-        // Atalhos rápidos
         val shortcutLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             weightSum = 3f
@@ -409,15 +405,17 @@ class MainActivity : Activity() {
         val entries = mutableListOf<File>()
         val displayNames = mutableListOf<String>()
 
-        // Opção de voltar pasta
         directory.parentFile?.let { parent ->
             entries.add(parent)
             displayNames.add("⬆️ .. (Voltar pasta)")
         }
 
-        // Lista arquivos normalmente ou via Root/Shell se for pasta protegida (/data/local/tmp)
         val rawFiles = directory.listFiles()?.toList() ?: listFilesViaRootOrShell(directory)
-        val sortedFiles = rawFiles.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+        val sortedFiles = rawFiles.sortedWith(Comparator { a, b ->
+            if (a.isDirectory && !b.isDirectory) -1
+            else if (!a.isDirectory && b.isDirectory) 1
+            else a.name.compareTo(b.name, ignoreCase = true)
+        })
 
         for (f in sortedFiles) {
             entries.add(f)
@@ -447,29 +445,32 @@ class MainActivity : Activity() {
             val clickedFile = entries[position]
             val label = displayNames[position]
             if (label.startsWith("⬆️") || clickedFile.isDirectory) {
-                alert.dismiss()
+                alert?.dismiss()
                 showBuiltInFileManager(clickedFile)
             } else {
-                alert.dismiss()
+                alert?.dismiss()
                 loadFileFromBuiltInManager(clickedFile)
             }
         }
 
-        alert.show()
+        alert?.show()
     }
 
-    // Se o Android tentar esconder arquivos de /data/local/tmp, lê usando Root ou Shizuku/Shell
     private fun listFilesViaRootOrShell(dir: File): List<File> {
         val result = mutableListOf<File>()
-        val shells = arrayOf(arrayOf("su", "-c", "ls -1 '${dir.absolutePath}'"), arrayOf("sh", "-c", "ls -1 '${dir.absolutePath}'"))
+        val shells = arrayOf(
+            arrayOf("su", "-c", "ls -1 '${dir.absolutePath}'"),
+            arrayOf("sh", "-c", "ls -1 '${dir.absolutePath}'")
+        )
         for (cmd in shells) {
             try {
                 val p = Runtime.getRuntime().exec(cmd)
                 val reader = BufferedReader(InputStreamReader(p.inputStream))
                 var line: String?
                 while (reader.readLine().also { line = it } != null) {
-                    if (line!!.isNotBlank()) {
-                        result.add(File(dir, line!!))
+                    val trimmed = line!!.trim()
+                    if (trimmed.isNotEmpty()) {
+                        result.add(File(dir, trimmed))
                     }
                 }
                 p.waitFor()
@@ -487,8 +488,9 @@ class MainActivity : Activity() {
             if (file.canRead()) {
                 cleanAndCopyScript(FileInputStream(file), tempFile)
             } else {
-                // Copia via Root/Shell caso esteja em /data/local/tmp protegido
-                Runtime.getRuntime().exec(arrayOf("su", "-c", "cp '${file.absolutePath}' '${tempFile.absolutePath}' && chmod 777 '${tempFile.absolutePath}'")).waitFor()
+                Runtime.getRuntime().exec(
+                    arrayOf("su", "-c", "cp '${file.absolutePath}' '${tempFile.absolutePath}' && chmod 777 '${tempFile.absolutePath}'")
+                ).waitFor()
             }
 
             onScriptLoadedReady(tempFile)
@@ -526,4 +528,22 @@ class MainActivity : Activity() {
         }
         writer.flush()
         writer.close()
-       
+        reader.close()
+    }
+
+    private fun onScriptLoadedReady(tempFile: File) {
+        tempFile.setReadable(true, false)
+        tempFile.setWritable(true, false)
+        tempFile.setExecutable(true, false)
+        selectedScriptFile = tempFile
+        txtFileName.text = "Arquivo: $originalName"
+
+        transportToTmpAndChmod()
+        showPermissionsDialog {
+            transportToTmpAndChmod()
+            showMtExecuteDialog()
+        }
+    }
+
+    private fun showPermissionsDialog(onConfirm: () -> Unit) {
+        val layout = LinearLayout
