@@ -15,25 +15,8 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
-import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.ListView
-import android.widget.RadioButton
-import android.widget.RadioGroup
-import android.widget.ScrollView
-import android.widget.TextView
-import android.widget.Toast
-import java.io.BufferedReader
-import java.io.BufferedWriter
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileWriter
-import java.io.InputStream
-import java.io.InputStreamReader
-import java.io.OutputStream
+import android.widget.*
+import java.io.*
 import java.util.Comparator
 
 class MainActivity : Activity() {
@@ -109,7 +92,7 @@ class MainActivity : Activity() {
         bar.addView(btnRun); bar.addView(btnPerms); bar.addView(btnStop); bar.addView(btnClear)
 
         txtTerminal = TextView(this).apply {
-            text = "=== [ LUKS STORE TERMINAL ] ===\n• Transporte obrigatório: /data/local/tmp/\n• Suporte: Root (su) & Shizuku\n\n"
+            text = "=== [ LUKS STORE TERMINAL ] ===\n• Transporte automático: /data/local/tmp/\n• Suporte: Root (su) & Shizuku\n\n"
             setTextColor(Color.parseColor("#E040FB"))
             typeface = Typeface.MONOSPACE
             textSize = 13f
@@ -239,7 +222,7 @@ class MainActivity : Activity() {
         dir.parentFile?.let { entries.add(it); names.add("⬆️ .. (Voltar pasta)") }
 
         val raw = dir.listFiles()?.toList() ?: listViaShell(dir)
-        val sorted = raw.sortedWith(Comparator<File> { a, b ->
+        val sorted = raw.sortedWith(Comparator { a, b ->
             if (a.isDirectory != b.isDirectory) if (a.isDirectory) -1 else 1 else a.name.compareTo(b.name, true)
         })
         for (f in sorted) {
@@ -346,14 +329,14 @@ class MainActivity : Activity() {
         val preview = label("rwxrwxrwx(777)", 17f, Color.WHITE, true, Gravity.CENTER).apply { setPadding(0, 20, 0, 10) }
         root.addView(preview)
 
-        val calc: () -> Unit = {
+        val calc = {
             var oct = ""; var sym = ""; val ch = charArrayOf('r', 'w', 'x')
             var sp = 0
             if (cbUid.isChecked) sp += 4; if (cbGid.isChecked) sp += 2; if (cbStk.isChecked) sp += 1
             for (r in 0..2) {
                 var s = 0
                 for (c in 0..2) { if (cbs[r][c].isChecked) { s += (1 shl (2 - c)); sym += ch[c] } else sym += "-" }
-                oct += s.toString()
+                oct += s
             }
             permOctal = if (sp > 0) "$sp$oct" else oct
             permSym = sym
@@ -392,4 +375,15 @@ class MainActivity : Activity() {
         rbExt.setOnCheckedChangeListener { _, b -> if (b) useExtEnv = true }
 
         box.addView(warn); box.addView(acts); box.addView(rg); box.addView(cbR); box.addView(cbS)
-        dlg = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Ple
+        dlg = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Please select an action to perform").setView(box).create()
+        dlg?.show()
+    }
+
+    private fun showEditorDialog() {
+        val f = selectedScriptFile ?: return
+        val ed = EditText(this).apply {
+            setText(try { f.readText() } catch (_: Exception) { "" })
+            setTextColor(Color.WHITE); setBackgroundColor(Color.BLACK); typeface = Typeface.MONOSPACE; textSize = 12f; setPadding(20, 20, 20, 20)
+        }
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Edit: $originalName").setVi
