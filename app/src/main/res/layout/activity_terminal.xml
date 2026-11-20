@@ -35,7 +35,7 @@
         android:layout_height="wrap_content"
         android:hint="@string/terminal_hint"
         android:textColor="#FFFFFF"
-        android:hintTextColor="#A98BBF"
+        android:textColorHint="#A98BBF"
         android:singleLine="true" />
 
     <Button
