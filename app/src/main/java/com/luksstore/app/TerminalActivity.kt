@@ -1,8 +1,6 @@
 
 package com.luks.shrunner
 
-import android.content.Context
-import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
@@ -12,72 +10,58 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.BufferedWriter
+import java.io.File
 
 class TerminalActivity : AppCompatActivity() {
 
-    private var process: Process? = null
-    private var input: BufferedWriter? = null
+    private var conteudoOriginal = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_terminal)
 
-        val path = intent.getStringExtra("PATH") ?: run {
-            finish()
-            return
-        }
-
         val output = findViewById<TextView>(R.id.txtTerminal)
-        val editInput = findViewById<EditText>(R.id.edtInput)
-
+        val pesquisa = findViewById<EditText>(R.id.edtInput)
         val btnEnviar = findViewById<Button>(R.id.btnEnviar)
         val btnParar = findViewById<Button>(R.id.btnParar)
         val btnLimpar = findViewById<Button>(R.id.btnLimpar)
 
+        val path = intent.getStringExtra("PATH")
+
         lifecycleScope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    val proc = ProcessBuilder("sh", path)
-                        .redirectErrorStream(true)
-                        .start()
+                val texto = withContext(Dispatchers.IO) {
+                    val arquivo = path?.let { File(it) }
+                        ?: throw IllegalArgumentException("Arquivo não informado.")
 
-                    process = proc
-                    input = proc.outputStream.bufferedWriter()
-
-                    proc.inputStream.bufferedReader().useLines { lines ->
-                        lines.forEach { line ->
-                            withContext(Dispatchers.Main) {
-                                output.append("$line\n")
-                            }
-                        }
+                    if (!arquivo.isFile) {
+                        throw IllegalArgumentException("Arquivo não encontrado.")
                     }
 
-                    proc.waitFor()
+                    arquivo.readText()
                 }
+
+                conteudoOriginal = texto
+                output.text = texto
             } catch (e: Exception) {
-                output.append("\nErro: ${e.message}\n")
+                output.text = "Erro ao abrir arquivo: ${e.message}"
             }
         }
 
         btnEnviar.setOnClickListener {
-            val command = editInput.text.toString()
-
-            try {
-                input?.let {
-                    it.write(command)
-                    it.newLine()
-                    it.flush()
-                    editInput.text.clear()
-                } ?: output.append("Terminal ainda não iniciado.\n")
-            } catch (e: Exception) {
-                output.append("Erro ao enviar: ${e.message}\n")
+            val termo = pesquisa.text.toString()
+            output.text = if (termo.isBlank()) {
+                conteudoOriginal
+            } else {
+                conteudoOriginal.lines()
+                    .filter { it.contains(termo, ignoreCase = true) }
+                    .joinToString("\n")
+                    .ifBlank { "Nenhum resultado encontrado." }
             }
         }
 
         btnParar.setOnClickListener {
-            process?.destroy()
-            output.append("\nProcesso encerrado.\n")
+            finish()
         }
 
         btnLimpar.setOnClickListener {
@@ -85,16 +69,10 @@ class TerminalActivity : AppCompatActivity() {
         }
     }
 
-    override fun onDestroy() {
-        process?.destroy()
-        input?.close()
-        super.onDestroy()
-    }
-
     companion object {
-        fun start(ctx: Context, path: String) {
+        fun start(ctx: android.content.Context, path: String) {
             ctx.startActivity(
-                Intent(ctx, TerminalActivity::class.java)
+                android.content.Intent(ctx, TerminalActivity::class.java)
                     .putExtra("PATH", path)
             )
         }
