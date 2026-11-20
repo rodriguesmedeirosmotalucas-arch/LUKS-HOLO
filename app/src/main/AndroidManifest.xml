@@ -6,7 +6,15 @@
         android:theme="@style/Theme.LuksPurple"
         android:requestLegacyExternalStorage="true">
 
-        <!-- Cole aqui a(s) tag(s) <activity ...> que você já tinha -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
     </application>
 
 </manifest>
