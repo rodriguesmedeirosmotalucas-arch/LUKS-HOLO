@@ -21,6 +21,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import rikka.shizuku.Shizuku
+import rikka.shizuku.ShizukuRemoteProcess
 import java.io.File
 
 class MainActivity : Activity() {
@@ -313,7 +314,7 @@ class MainActivity : Activity() {
                 val escritor = if (modo == "root")
                     Runtime.getRuntime().exec(arrayOf("su", "-c", "cat > $tmp"))
                 else
-                    Shizuku.newProcess(arrayOf("sh", "-c", "cat > $tmp"), null, null)
+                    ShizukuRemoteProcess(arrayOf("sh", "-c", "cat > $tmp"), null, null)
                 escritor.outputStream.use { it.write(conteudo.toByteArray()) }
                 escritor.waitFor()
 
@@ -321,14 +322,14 @@ class MainActivity : Activity() {
                 val chmod = if (modo == "root")
                     Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 777 $tmp"))
                 else
-                    Shizuku.newProcess(arrayOf("sh", "-c", "chmod 777 $tmp"), null, null)
+                    ShizukuRemoteProcess(arrayOf("sh", "-c", "chmod 777 $tmp"), null, null)
                 chmod.waitFor()
 
                 // 3) Executar
                 val proc = if (modo == "root")
                     Runtime.getRuntime().exec(arrayOf("su", "-c", "sh $tmp"))
                 else
-                    Shizuku.newProcess(arrayOf("sh", tmp), null, null)
+                    ShizukuRemoteProcess(arrayOf("sh", tmp), null, null)
 
                 val t1 = Thread {
                     proc.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") }
