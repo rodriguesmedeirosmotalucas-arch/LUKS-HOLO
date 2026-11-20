@@ -1,40 +1,102 @@
+
+package com.luks.shrunner
+
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.widget.Button
+import android.widget.EditText
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.BufferedWriter
+
 class TerminalActivity : AppCompatActivity() {
-    private lateinit var process: Process
-    private lateinit var input: BufferedWriter
+
+    private var process: Process? = null
+    private var input: BufferedWriter? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_terminal)
-        val path = intent.getStringExtra("PATH")!!
-        val mode = intent.getStringExtra("MODE") ?: "SYSTEM"
+
+        val path = intent.getStringExtra("PATH") ?: run {
+            finish()
+            return
+        }
+
         val output = findViewById<TextView>(R.id.txtTerminal)
+        val editInput = findViewById<EditText>(R.id.edtInput)
 
-        lifecycleScope.launch(Dispatchers.IO) {
-            process = when (mode) {
-                "ROOT" -> ProcessBuilder("su", "-c", "sh $path").start()
-                "SHIZUKU" -> ShizukuShell.exec("sh $path")   // ver módulo abaixo
-                else -> ProcessBuilder("sh", path).start()
-            }
-            input = process.outputStream.bufferedWriter()
+        val btnEnviar = findViewById<Button>(R.id.btnEnviar)
+        val btnParar = findViewById<Button>(R.id.btnParar)
+        val btnLimpar = findViewById<Button>(R.id.btnLimpar)
 
-            process.inputStream.bufferedReader().forEachLine { line ->
-                runOnUiThread { output.append(line + "\n") }  // saída ao vivo, linha por linha
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val proc = ProcessBuilder("sh", path)
+                        .redirectErrorStream(true)
+                        .start()
+
+                    process = proc
+                    input = proc.outputStream.bufferedWriter()
+
+                    proc.inputStream.bufferedReader().useLines { lines ->
+                        lines.forEach { line ->
+                            withContext(Dispatchers.Main) {
+                                output.append("$line\n")
+                            }
+                        }
+                    }
+
+                    proc.waitFor()
+                }
+            } catch (e: Exception) {
+                output.append("\nErro: ${e.message}\n")
             }
         }
 
-        findViewById<Button>(R.id.btnEnviar).setOnClickListener {
-            val cmd = findViewById<EditText>(R.id.edtInput).text.toString()
-            input.write(cmd + "\n"); input.flush()
-            findViewById<EditText>(R.id.edtInput).setText("")
+        btnEnviar.setOnClickListener {
+            val command = editInput.text.toString()
+
+            try {
+                input?.let {
+                    it.write(command)
+                    it.newLine()
+                    it.flush()
+                    editInput.text.clear()
+                } ?: output.append("Terminal ainda não iniciado.\n")
+            } catch (e: Exception) {
+                output.append("Erro ao enviar: ${e.message}\n")
+            }
         }
 
-        findViewById<Button>(R.id.btnParar).setOnClickListener { process.destroy() }
-        findViewById<Button>(R.id.btnLimpar).setOnClickListener { output.text = "" }
+        btnParar.setOnClickListener {
+            process?.destroy()
+            output.append("\nProcesso encerrado.\n")
+        }
+
+        btnLimpar.setOnClickListener {
+            output.text = ""
+        }
+    }
+
+    override fun onDestroy() {
+        process?.destroy()
+        input?.close()
+        super.onDestroy()
     }
 
     companion object {
-        fun start(ctx: Context, path: String, mode: String) =
-            ctx.startActivity(Intent(ctx, TerminalActivity::class.java)
-                .putExtra("PATH", path).putExtra("MODE", mode))
+        fun start(ctx: Context, path: String) {
+            ctx.startActivity(
+                Intent(ctx, TerminalActivity::class.java)
+                    .putExtra("PATH", path)
+            )
+        }
     }
 }
