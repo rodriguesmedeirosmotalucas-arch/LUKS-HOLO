@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.LuksPurple" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#160A25</item>
-        <item name="android:statusBarColor">#160A25</item>
-        <item name="android:navigationBarColor">#160A25</item>
+    <style name="Theme.LuksPurple" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">#6A1B9A</item>
+        <item name="colorPrimaryDark">#4A148C</item>
+        <item name="colorAccent">#AB47BC</item>
     </style>
 </resources>
