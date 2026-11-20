@@ -1,24 +1,62 @@
+
+package com.luks.shrunner
+
+import android.content.Context
+import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+
 object ScriptTransporter {
-    suspend fun transport(ctx: Context, source: Any): File = withContext(Dispatchers.IO) {
-        val tmp = File("/data/local/tmp")
-        if (!tmp.exists()) tmp.mkdirs()
-        val name = (source as? File)?.name
-            ?: ctx.contentResolver.query(source as Uri, null, null, null, null)
-                ?.use { c -> c.moveToFirst(); c.getString(0) }?.substringAfterLast('/')
-            ?: "script_luks.sh"
-        val dest = File(tmp, name)
 
-        val raw = if (source is File) source.readText()
-            else ctx.contentResolver.openInputStream(source as Uri)!!
-                .bufferedReader().readText()
+    suspend fun transport(
+        ctx: Context,
+        source: Any
+    ): File = withContext(Dispatchers.IO) {
 
-        // Correções invisíveis de formatação (estilo MT Manager):
-        // 1. remove BOM, 2. CRLF -> LF, 3. garante shebang na 1ª linha
-        var text = raw.replace("\uFEFF", "").replace("\r\n", "\n").replace("\r", "\n")
-        if (!text.startsWith("#!")) text = "#!/system/bin/sh\n$text"
+        val raw = when (source) {
+            is File -> source.readText()
+            is Uri -> {
+                ctx.contentResolver.openInputStream(source)?.use {
+                    it.bufferedReader().readText()
+                } ?: throw IllegalArgumentException(
+                    "Não foi possível abrir o arquivo."
+                )
+            }
+            else -> throw IllegalArgumentException(
+                "Tipo de arquivo não suportado."
+            )
+        }
+
+        var text = raw
+            .replace("\uFEFF", "")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+
+        if (!text.startsWith("#!")) {
+            text = "#!/system/bin/sh\n$text"
+        }
+
+        val folder = File(ctx.filesDir, "scripts")
+
+        if (!folder.exists() && !folder.mkdirs()) {
+            throw IllegalStateException(
+                "Não foi possível criar a pasta de scripts."
+            )
+        }
+
+        val name = when (source) {
+            is File -> source.name
+            is Uri -> "script_luks.sh"
+            else -> "script_luks.sh"
+        }.substringAfterLast('/')
+
+        val safeName = name.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        val dest = File(folder, safeName)
 
         dest.writeText(text)
-        dest.setExecutable(true, false)
+        dest.setExecutable(true, true)
+
         dest
     }
 }
