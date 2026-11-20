@@ -22,11 +22,10 @@ import android.widget.TextView
 import android.widget.Toast
 import rikka.shizuku.Shizuku
 import java.io.File
-import java.io.IOException
-import java.util.UUID
 
 class MainActivity : Activity() {
 
+    // Cores LUKS STORE (roxo neon)
     private val corFundo = 0xFF160A25.toInt()
     private val corCard = 0xFF1E0F33.toInt()
     private val corTexto = 0xFFC084FC.toInt()
@@ -41,8 +40,9 @@ class MainActivity : Activity() {
         montarTela()
     }
 
-    private fun px(valor: Int): Int =
-        (valor * resources.displayMetrics.density).toInt()
+    // ==================== INTERFACE ====================
+
+    private fun px(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun montarTela() {
         window.statusBarColor = 0xFF12061F.toInt()
@@ -53,7 +53,6 @@ class MainActivity : Activity() {
             setPadding(px(24), px(40), px(24), px(24))
             setBackgroundColor(corFundo)
         }
-
         scroll.addView(coluna)
         setContentView(scroll)
 
@@ -86,22 +85,15 @@ class MainActivity : Activity() {
         }
 
         val lpStatus = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            bottomMargin = px(28)
-        }
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = px(28) }
 
         val lpBotao = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            px(56)
-        ).apply {
-            bottomMargin = px(12)
-        }
+            LinearLayout.LayoutParams.MATCH_PARENT, px(56)
+        ).apply { bottomMargin = px(12) }
 
         val dica = TextView(this).apply {
-            text = "Carregue um script antes de executar.\n" +
-                "Se o Shizuku não estiver ativo, abra o app Shizuku primeiro."
+            text = "Carregue um script antes de executar.\nSe o Shizuku não estiver ativo, abra o app Shizuku primeiro."
             setTextColor(0xFF6E5A8A.toInt())
             textSize = 12f
             gravity = Gravity.CENTER
@@ -111,67 +103,40 @@ class MainActivity : Activity() {
         coluna.addView(titulo)
         coluna.addView(subtitulo)
         coluna.addView(tvStatus, lpStatus)
-        coluna.addView(
-            botao("📂  Carregar script (.sh)", 0xFF7B2FBE) { abrirSeletor() },
-            lpBotao
-        )
-        coluna.addView(
-            botao("🗂️  Gerenciador próprio", 0xFF4B1D6E) {
-                abrirGerenciadorProprio()
-            },
-            lpBotao
-        )
-        coluna.addView(
-            botao("⚡  Executar via Shizuku", 0xFF2E7D5B) {
-                acaoShizuku()
-            },
-            lpBotao
-        )
-        coluna.addView(
-            botao("🧱  Executar via Root", 0xFF8C3B2E) {
-                acaoRoot()
-            },
-            lpBotao
-        )
+        coluna.addView(botao("📂  Carregar script (.sh)", 0xFF7B2FBE) { abrirSeletor() }, lpBotao)
+        coluna.addView(botao("🗂️  Gerenciador próprio", 0xFF4B1D6E) { abrirGerenciadorProprio() }, lpBotao)
+        coluna.addView(botao("⚡  Executar via Shizuku", 0xFF2E7D5B) { acaoShizuku() }, lpBotao)
+        coluna.addView(botao("🧱  Executar via Root", 0xFF8C3B2E) { acaoRoot() }, lpBotao)
         coluna.addView(dica)
     }
 
-    private fun botao(
-        texto: String,
-        cor: Int,
-        acao: () -> Unit
-    ): Button {
-        return Button(this).apply {
-            text = texto
-            setTextColor(Color.WHITE)
-            textSize = 15f
-            isAllCaps = false
-            background = GradientDrawable().apply {
-                setColor(cor)
-                cornerRadius = px(14).toFloat()
-            }
-            setOnClickListener { acao() }
+    private fun botao(texto: String, cor: Int, acao: () -> Unit) = Button(this).apply {
+        this.text = texto
+        setTextColor(Color.WHITE)
+        textSize = 15f
+        allCaps = false
+        background = GradientDrawable().apply {
+            setColor(cor)
+            cornerRadius = px(14).toFloat()
         }
+        setOnClickListener { acao() }
     }
 
-    // Seletor de arquivos do Android
+    // ==================== CARREGAR SCRIPT ====================
+
+    // Opção 1: seletor do sistema (outro gerenciador) — não precisa de permissão
     private fun abrirSeletor() {
         try {
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "*/*"
-            }
-            startActivityForResult(intent, 101)
-        } catch (_: Exception) {
-            Toast.makeText(
-                this,
-                "Nenhum seletor de arquivos encontrado",
-                Toast.LENGTH_SHORT
-            ).show()
+            val i = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            i.addCategory(Intent.CATEGORY_OPENABLE)
+            i.type = "*/*"
+            startActivityForResult(i, 101)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Nenhum gerenciador encontrado", Toast.LENGTH_SHORT).show()
         }
     }
 
-    // Navegador próprio; requer acesso a todos os arquivos no Android 11+
+    // Opção 2: navegador próprio (dentro do app)
     private fun abrirGerenciadorProprio() {
         if (temAcessoArquivos()) {
             navegador(Environment.getExternalStorageDirectory())
@@ -192,112 +157,63 @@ class MainActivity : Activity() {
     private fun pedirAcessoArquivos() {
         if (Build.VERSION.SDK_INT >= 30) {
             try {
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                    Uri.parse("package:$packageName")
-                )
-                startActivity(intent)
-                Toast.makeText(
-                    this,
-                    "Conceda o acesso e volte ao app",
-                    Toast.LENGTH_LONG
-                ).show()
-            } catch (_: Exception) {
-                try {
-                    startActivity(
-                        Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:$packageName")
                     )
-                } catch (_: Exception) {
-                    Toast.makeText(
-                        this,
-                        "Não foi possível abrir as configurações de arquivos",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+                )
+            } catch (e: Exception) {
+                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
             }
+            Toast.makeText(this, "Conceda 'Todos os arquivos' e volte", Toast.LENGTH_LONG).show()
         } else {
-            requestPermissions(
-                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                100
-            )
+            requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), 100)
         }
     }
 
-    @Deprecated("Callback de permissão legado")
     override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
+        requestCode: Int, permissions: Array<String>, grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
-        if (
-            requestCode == 100 &&
-            grantResults.isNotEmpty() &&
+        if (requestCode == 100 && grantResults.isNotEmpty() &&
             grantResults[0] == PackageManager.PERMISSION_GRANTED
         ) {
             navegador(Environment.getExternalStorageDirectory())
         }
     }
 
+    // Navegador de pastas em diálogo (recursivo)
     private fun navegador(pasta: File) {
         val itens = pasta.listFiles()
-
         if (itens == null) {
-            Toast.makeText(
-                this,
-                "Sem acesso: ${pasta.absolutePath}",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, "Sem acesso: ${pasta.absolutePath}", Toast.LENGTH_SHORT).show()
             return
         }
-
         val ordenados = itens.sortedWith(
-            compareByDescending<File> { it.isDirectory }
-                .thenBy { it.name.lowercase() }
+            compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase() }
         )
-
         val temPai = pasta.parentFile != null
         val nomes = ArrayList<String>()
-
         if (temPai) nomes.add("⬆️  ..")
-
-        ordenados.forEach { arquivo ->
-            nomes.add(
-                if (arquivo.isDirectory) "📁 ${arquivo.name}"
-                else "📜 ${arquivo.name}"
-            )
-        }
+        ordenados.forEach { nomes.add(if (it.isDirectory) "📁 ${it.name}" else "📜 ${it.name}") }
 
         AlertDialog.Builder(this)
             .setTitle(pasta.absolutePath)
-            .setItems(nomes.toTypedArray()) { _, posicao ->
-                if (temPai && posicao == 0) {
-                    navegador(pasta.parentFile!!)
-                } else {
-                    val indice = posicao - if (temPai) 1 else 0
-
-                    if (indice in ordenados.indices) {
-                        val alvo = ordenados[indice]
-
-                        if (alvo.isDirectory) {
-                            navegador(alvo)
-                        } else if (alvo.name.endsWith(".sh", ignoreCase = true)) {
+            .setItems(nomes.toTypedArray()) { _, pos ->
+                when {
+                    temPai && pos == 0 -> navegador(pasta.parentFile!!)
+                    else -> {
+                        val alvo = ordenados[pos - if (temPai) 1 else 0]
+                        if (alvo.isDirectory) navegador(alvo)
+                        else if (alvo.name.endsWith(".sh")) {
                             try {
                                 selecionar(alvo.readText(), alvo.name)
-                            } catch (erro: Exception) {
-                                Toast.makeText(
-                                    this,
-                                    "Falha ao ler: ${erro.message}",
-                                    Toast.LENGTH_LONG
-                                ).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(this, "Falha ao ler: ${e.message}", Toast.LENGTH_LONG).show()
                             }
                         } else {
-                            Toast.makeText(
-                                this,
-                                "Escolha um arquivo .sh",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            Toast.makeText(this, "Escolha um arquivo .sh", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -306,175 +222,85 @@ class MainActivity : Activity() {
             .show()
     }
 
-    @Deprecated("Seletor legado")
-    override fun onActivityResult(
-        requestCode: Int,
-        resultCode: Int,
-        data: Intent?
-    ) {
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-
         if (requestCode == 101 && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
-
             try {
                 val nome = queryNome(uri) ?: "script.sh"
-
                 val conteudo = contentResolver.openInputStream(uri)
-                    ?.bufferedReader()
-                    ?.use { it.readText() }
-
-                if (conteudo != null) {
-                    selecionar(conteudo, nome)
-                } else {
-                    Toast.makeText(
-                        this,
-                        "Não foi possível ler o arquivo",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            } catch (erro: Exception) {
-                Toast.makeText(
-                    this,
-                    "Falha: ${erro.message}",
-                    Toast.LENGTH_LONG
-                ).show()
+                    ?.bufferedReader()?.use { it.readText() }
+                if (conteudo != null) selecionar(conteudo, nome)
+                else Toast.makeText(this, "Não foi possível ler o arquivo", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Falha: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    private fun queryNome(uri: Uri): String? {
-        return try {
-            contentResolver.query(
-                uri,
-                null,
-                null,
-                null,
-                null
-            )?.use { cursor ->
-                val indice = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (cursor.moveToFirst() && indice >= 0) {
-                    cursor.getString(indice)
-                } else {
-                    null
-                }
-            }
-        } catch (_: Exception) {
-            null
+    private fun queryNome(uri: Uri): String? = try {
+        contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (c.moveToFirst() && idx >= 0) c.getString(idx) else null
         }
-    }
+    } catch (e: Exception) { null }
 
     private fun selecionar(conteudo: String, nome: String) {
-        if (!nome.endsWith(".sh", ignoreCase = true)) {
-            Toast.makeText(
-                this,
-                "Selecione um arquivo com extensão .sh",
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-
         scriptConteudo = conteudo
         scriptNome = nome
         tvStatus.text = "📜 $nome pronto (${conteudo.length} caracteres)"
-
         Toast.makeText(this, "Script carregado!", Toast.LENGTH_SHORT).show()
     }
 
+    // ==================== EXECUTAR ====================
+
     private fun acaoRoot() {
         if (scriptConteudo == null) {
-            Toast.makeText(
-                this,
-                "Carregue um script primeiro",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, "Carregue um script primeiro", Toast.LENGTH_SHORT).show()
             return
         }
-
-        confirmarExecucao("root")
+        executar("root")
     }
 
     private fun acaoShizuku() {
         if (scriptConteudo == null) {
-            Toast.makeText(
-                this,
-                "Carregue um script primeiro",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(this, "Carregue um script primeiro", Toast.LENGTH_SHORT).show()
             return
         }
-
         val pronto = try {
             Shizuku.pingBinder() &&
-                Shizuku.checkSelfPermission() ==
-                PackageManager.PERMISSION_GRANTED
-        } catch (_: Exception) {
-            false
-        }
+                Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        } catch (e: Exception) { false }
 
         if (pronto) {
-            confirmarExecucao("shizuku")
+            executar("shizuku")
         } else {
             try {
                 Shizuku.requestPermission(200)
-                Toast.makeText(
-                    this,
-                    "Conceda a permissão do Shizuku e toque de novo",
-                    Toast.LENGTH_LONG
-                ).show()
-            } catch (_: Exception) {
-                Toast.makeText(
-                    this,
-                    "Shizuku não está ativo. Abra o app Shizuku primeiro.",
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(this, "Conceda a permissão no Shizuku e toque de novo", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Shizuku não está rodando — abra o app Shizuku", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    private fun confirmarExecucao(modo: String) {
-        val nome = scriptNome ?: "script"
-
-        AlertDialog.Builder(this)
-            .setTitle("Confirmar execução")
-            .setMessage(
-                "Executar \"$nome\" usando ${if (modo == "root") "Root" else "Shizuku"}?\n\n" +
-                    "Um script pode alterar ou apagar dados do aparelho. " +
-                    "Execute apenas scripts que você conhece e confia."
-            )
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Executar") { _, _ ->
-                executar(modo)
-            }
-            .show()
-    }
-
-    private fun anexar(textView: TextView, texto: String) {
-        runOnUiThread {
-            textView.append(texto)
-        }
+    private fun anexar(tv: TextView, texto: String) {
+        runOnUiThread { tv.append(texto) }
     }
 
     private fun executar(modo: String) {
         val conteudo = scriptConteudo ?: return
-        val nome = scriptNome ?: "script.sh"
+        val tmp = "/data/local/tmp/luks_script.sh"
 
-        // Nome aleatório para evitar sobrescrever outro arquivo temporário.
-        val temporario = "/data/local/tmp/luks_${UUID.randomUUID()}.sh"
-
-        val terminal = TextView(this).apply {
+        // Terminal em diálogo, saída ao vivo
+        val tv = TextView(this).apply {
             setTextColor(0xFFB8F5C0.toInt())
             typeface = Typeface.MONOSPACE
             textSize = 12f
             setPadding(px(12), px(12), px(12), px(12))
-            text = "Script: $nome\n" +
-                "Modo: ${if (modo == "root") "Root" else "Shizuku"}\n\n"
+            text = "Script: $scriptNome\nModo: ${if (modo == "root") "Root" else "Shizuku"}\n\n"
         }
-
-        val scroll = ScrollView(this).apply {
-            addView(terminal)
-        }
-
+        val scroll = ScrollView(this).apply { addView(tv) }
         AlertDialog.Builder(this)
             .setTitle("Terminal")
             .setView(scroll)
@@ -483,107 +309,40 @@ class MainActivity : Activity() {
 
         Thread {
             try {
-                val escritor = if (modo == "root") {
-                    Runtime.getRuntime().exec(
-                        arrayOf("su", "-c", "cat > '$temporario'")
-                    )
-                } else {
-                    Shizuku.newProcess(
-                        arrayOf("sh", "-c", "cat > '$temporario'"),
-                        null,
-                        null
-                    )
+                // 1) Enviar o script para /data/local/tmp via stdin
+                val escritor = if (modo == "root")
+                    Runtime.getRuntime().exec(arrayOf("su", "-c", "cat > $tmp"))
+                else
+                    Shizuku.newProcess(arrayOf("sh", "-c", "cat > $tmp"), null, null)
+                escritor.outputStream.use { it.write(conteudo.toByteArray()) }
+                escritor.waitFor()
+
+                // 2) Dar permissão de execução
+                val chmod = if (modo == "root")
+                    Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 777 $tmp"))
+                else
+                    Shizuku.newProcess(arrayOf("sh", "-c", "chmod 777 $tmp"), null, null)
+                chmod.waitFor()
+
+                // 3) Executar
+                val proc = if (modo == "root")
+                    Runtime.getRuntime().exec(arrayOf("su", "-c", "sh $tmp"))
+                else
+                    Shizuku.newProcess(arrayOf("sh", tmp), null, null)
+
+                val t1 = Thread {
+                    proc.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") }
                 }
-
-                escritor.outputStream.use { saida ->
-                    saida.write(conteudo.toByteArray(Charsets.UTF_8))
+                val t2 = Thread {
+                    proc.errorStream.bufferedReader().forEachLine { anexar(tv, "[erro] $it\n") }
                 }
-
-                val codigoGravacao = escritor.waitFor()
-                if (codigoGravacao != 0) {
-                    throw IOException(
-                        "Falha ao copiar o script (código $codigoGravacao)"
-                    )
-                }
-
-                // Não precisa de chmod: o script é executado passando-o para sh.
-                val processo = if (modo == "root") {
-                    Runtime.getRuntime().exec(
-                        arrayOf("su", "-c", "sh '$temporario'")
-                    )
-                } else {
-                    Shizuku.newProcess(
-                        arrayOf("sh", temporario),
-                        null,
-                        null
-                    )
-                }
-
-                val leitorSaida = Thread {
-                    try {
-                        processo.inputStream.bufferedReader().forEachLine {
-                            anexar(terminal, "$it\n")
-                        }
-                    } catch (erro: Exception) {
-                        anexar(
-                            terminal,
-                            "[erro ao ler saída: ${erro.message}]\n"
-                        )
-                    }
-                }
-
-                val leitorErro = Thread {
-                    try {
-                        processo.errorStream.bufferedReader().forEachLine {
-                            anexar(terminal, "[erro] $it\n")
-                        }
-                    } catch (erro: Exception) {
-                        anexar(
-                            terminal,
-                            "[erro ao ler mensagem: ${erro.message}]\n"
-                        )
-                    }
-                }
-
-                leitorSaida.start()
-                leitorErro.start()
-
-                val codigo = processo.waitFor()
-                leitorSaida.join()
-                leitorErro.join()
-
-                anexar(
-                    terminal,
-                    "\n[finalizado — código $codigo]\n"
-                )
-            } catch (erro: Exception) {
-                anexar(
-                    terminal,
-                    "\n[ERRO] ${erro.message}\n"
-                )
-            } finally {
-                removerTemporario(modo, temporario)
+                t1.start(); t2.start()
+                proc.waitFor()
+                t1.join(); t2.join()
+                anexar(tv, "\n[finalizado — código ${proc.exitValue()}]\n")
+            } catch (e: Exception) {
+                anexar(tv, "\n[ERRO] ${e.message}\n")
             }
         }.start()
-    }
-
-    private fun removerTemporario(modo: String, caminho: String) {
-        try {
-            val processo = if (modo == "root") {
-                Runtime.getRuntime().exec(
-                    arrayOf("su", "-c", "rm -f '$caminho'")
-                )
-            } else {
-                Shizuku.newProcess(
-                    arrayOf("rm", "-f", caminho),
-                    null,
-                    null
-                )
-            }
-
-            processo.waitFor()
-        } catch (_: Exception) {
-            // A limpeza é uma tentativa; não interrompe a tela do app.
-        }
     }
 }
