@@ -1,0 +1,101 @@
+package com.luks.shrunner
+
+import android.app.Activity
+import android.content.Intent
+import android.graphics.Color
+import android.os.Bundle
+import android.provider.OpenableColumns
+import android.widget.*
+import java.io.File
+
+class MainActivity : Activity() {
+    private val dir = "/data/local/tmp/"
+    private val PURPLE = Color.parseColor("#7B2FF7")
+    private lateinit var log: TextView
+    private lateinit var spinner: Spinner
+    private lateinit var toggle: Switch
+    private var proc: Process? = null
+    private var scripts = listOf<String>()
+
+    override fun onCreate(b: Bundle?) {
+        super.onCreate(b)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0D0B14")); setPadding(40, 80, 40, 40)
+        }
+        fun btn(t: String, f: () -> Unit) = Button(this).apply {
+            text = t; setTextColor(Color.WHITE); setBackgroundColor(PURPLE); setOnClickListener { f() }
+        }
+        val title = TextView(this).apply { text = "SH Runner (root)"; textSize = 24f; setTextColor(Color.WHITE) }
+        spinner = Spinner(this)
+        toggle = Switch(this).apply { text = "Ativar"; setTextColor(Color.WHITE) }
+        log = TextView(this).apply { setTextColor(Color.parseColor("#B9A7FF")); textSize = 12f }
+        root.addView(title)
+        root.addView(btn("Importar .sh") {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
+            }, 1)
+        })
+        root.addView(btn("Atualizar lista") { refresh() })
+        root.addView(spinner); root.addView(toggle)
+        root.addView(ScrollView(this).apply { addView(log) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        setContentView(root)
+
+        toggle.setOnCheckedChangeListener { _, on -> if (on) start() else stop() }
+        refresh()
+    }
+
+    private fun su(cmd: String): String = try {
+        val p = ProcessBuilder("su", "-c", cmd).redirectErrorStream(true).start()
+        p.inputStream.bufferedReader().readText().also { p.waitFor() }
+    } catch (e: Exception) { "Erro: ${e.message} (sem root?)" }
+
+    private fun say(s: String) = runOnUiThread { log.append(s + "\n") }
+
+    private fun refresh() = Thread {
+        val out = su("ls $dir*.sh 2>/dev/null")
+        scripts = out.lines().filter { it.endsWith(".sh") }.map { it.substringAfterLast('/') }
+        runOnUiThread {
+            spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, scripts)
+        }
+        say("Scripts em $dir: ${scripts.size}")
+    }.start()
+
+    override fun onActivityResult(req: Int, res: Int, data: Intent?) {
+        val uri = data?.data ?: return
+        if (req != 1 || res != RESULT_OK) return
+        Thread {
+            val raw = contentResolver.query(uri, null, null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(it.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)) else null
+            } ?: "script.sh"
+            val name = raw.replace(Regex("[^A-Za-z0-9._-]"), "_")
+            if (su("test -f $dir$name && echo ok").trim() == "ok") {
+                say("$name já está em $dir, não precisa importar.")
+            } else {
+                val tmp = File(cacheDir, name)
+                contentResolver.openInputStream(uri)!!.use { i -> tmp.outputStream().use { i.copyTo(it) } }
+                su("cp '${tmp.absolutePath}' $dir$name && chmod 755 $dir$name")
+                tmp.delete()
+                say("$name enviado para $dir com permissão de execução.")
+            }
+            refresh()
+        }.start()
+    }
+
+    private fun start() {
+        val name = spinner.selectedItem as? String
+        if (name == null) { say("Nenhum script selecionado."); toggle.isChecked = false; return }
+        Thread {
+            try {
+                su("chmod 755 $dir$name")
+                proc = ProcessBuilder("su", "-c", "sh $dir$name").redirectErrorStream(true).start()
+                say("Executando $name...")
+                proc!!.inputStream.bufferedReader().forEachLine { say(it) }
+                say("Finalizado.")
+            } catch (e: Exception) { say("Erro: ${e.message}") }
+            runOnUiThread { toggle.isChecked = false }
+        }.start()
+    }
+
+    private fun stop() { proc?.destroy(); proc = null; say("Parado.") }
+}
