@@ -1,6 +1,7 @@
-
 package com.luks.shrunner
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
@@ -70,9 +71,9 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     companion object {
-        fun start(ctx: android.content.Context, path: String) {
+        fun start(ctx: Context, path: String) {
             ctx.startActivity(
-                android.content.Intent(ctx, TerminalActivity::class.java)
+                Intent(ctx, TerminalActivity::class.java)
                     .putExtra("PATH", path)
             )
         }
