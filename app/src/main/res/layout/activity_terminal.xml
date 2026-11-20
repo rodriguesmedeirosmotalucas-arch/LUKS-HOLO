@@ -1,0 +1,60 @@
+
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#160A25">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="LUKS STORE 👑"
+        android:textColor="#D9A7FF"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:padding="12dp" />
+
+    <TextView
+        android:id="@+id/txtTerminal"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#0B0611"
+        android:textColor="#CFA6FF"
+        android:text="Pré-visualização do arquivo carregado..."
+        android:textSize="14sp"
+        android:padding="12dp"
+        android:gravity="top"
+        android:fontFamily="monospace" />
+
+    <EditText
+        android:id="@+id/edtInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Pesquisar no conteúdo..."
+        android:textColor="#FFFFFF"
+        android:hintTextColor="#A98BBF"
+        android:singleLine="true" />
+
+    <Button
+        android:id="@+id/btnEnviar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="PESQUISAR" />
+
+    <Button
+        android:id="@+id/btnParar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="FECHAR" />
+
+    <Button
+        android:id="@+id/btnLimpar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="LIMPAR VISUALIZAÇÃO" />
+
+</LinearLayout>
