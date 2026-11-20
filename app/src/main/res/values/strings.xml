@@ -1,11 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_title">LUKS STORE</string>
-    <string name="btn_carregar">Carregar arquivo .sh</string>
-
-    <string name="terminal_preview">Pré-visualização do terminal</string>
-    <string name="terminal_hint">Digite um comando</string>
-    <string name="btn_pesquisar">Pesquisar</string>
-    <string name="btn_fechar">Fechar</string>
-    <string name="btn_limpar">Limpar</string>
-</resources>
+<string name="terminal_preview">Pré-visualização do terminal</string>
+<string name="terminal_hint">Digite um comando</string>
+<string name="btn_pesquisar">Pesquisar</string>
+<string name="btn_fechar">Fechar</string>
+<string name="btn_limpar">Limpar</string>
