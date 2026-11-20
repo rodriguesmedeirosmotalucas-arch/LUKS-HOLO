@@ -1,9 +1,4 @@
 <resources>
-    <string name="app_title">LUKS STORE 👑</string>
-    <string name="terminal_hint">Pesquisar no conteúdo…</string>
-    <string name="terminal_preview">Pré-visualização do arquivo carregado…</string>
-    <string name="btn_pesquisar">PESQUISAR</string>
-    <string name="btn_fechar">FECHAR</string>
-    <string name="btn_limpar">LIMPAR VISUALIZAÇÃO</string>
-    <string name="btn_carregar">CARREGAR</string>
+    <string name="app_title">LUKS STORE</string>
+    <string name="btn_carregar">Carregar arquivo .sh</string>
 </resources>
