@@ -44,9 +44,18 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (aguardandoAcesso && temAcesso()) {
+        if (aguardandoAcesso) {
             aguardandoAcesso = false
-            tvStatus.text = "🔓 Acesso total: ATIVO"
+            if (temAcesso() && testeAcessoReal()) {
+                tvStatus.text = "🔓 Acesso total: ATIVO ✅"
+                Toast.makeText(this, "🔓 Acesso REAL confirmado! ✅", Toast.LENGTH_SHORT).show()
+                if (nav.transportUri != null) nav.abrirInicio(true)
+            } else {
+                tvStatus.text = "🔒 Acesso total: BLOQUEADO"
+                Toast.makeText(this,
+                    "Ainda bloqueado! Faça manual:\nConfigurações → Apps → LUKS STORE → Permissões → Arquivos e mídia → Permitir gerenciar TODOS os arquivos",
+                    Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -105,7 +114,7 @@ class MainActivity : Activity() {
         col.addView(botao("⚡  Executar via Shizuku", 0xFF2E7D5B.toInt()) { acaoShizuku() }, lb)
         col.addView(botao("🧱  Executar via Root", 0xFF8C3B2E.toInt()) { acaoRoot() }, lb)
         col.addView(TextView(this).apply {
-            text = "Terminal aceita respostas de menu.\nTransportar + Root copiam até em /data."
+            text = "🔓 Acesso total libera Android/data.\n🎮 Root navega TUDO sem permissão."
             setTextColor(0xFF6E5A8A.toInt())
             textSize = 12f
             gravity = Gravity.CENTER
@@ -122,16 +131,38 @@ class MainActivity : Activity() {
         setOnClickListener { acao() }
     }
 
-    private fun acaoPerm() {
-        if (temAcesso()) {
-            tvStatus.text = "🔓 Acesso total: ATIVO"
-            Toast.makeText(this, "Acesso total já ativo ✅", Toast.LENGTH_SHORT).show()
-        } else pedir()
-    }
-
     private fun temAcesso(): Boolean {
         return if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager()
         else checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+    }
+
+    // Teste de verdade: consegue LISTAR Android/data?
+    private fun testeAcessoReal(): Boolean {
+        return try {
+            val d = File("/storage/emulated/0/Android/data")
+            d.exists() && d.list() != null
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun acaoPerm() {
+        if (temAcesso()) {
+            if (testeAcessoReal()) {
+                tvStatus.text = "🔓 Acesso total: ATIVO ✅"
+                Toast.makeText(this, "Acesso REAL confirmado ✅\nAndroid/data acessível!", Toast.LENGTH_SHORT).show()
+            } else {
+                tvStatus.text = "⚠️ Toggle ativo, mas Android/data bloqueado"
+                Toast.makeText(this,
+                    "O toggle está ativo mas o sistema bloqueia Android/data.\nUse o navegador Root 🎮 que acessa tudo via su!",
+                    Toast.LENGTH_LONG).show()
+            }
+        } else {
+            Toast.makeText(this,
+                "Na tela que abrir: ATIVE 'Permitir gerenciar todos os arquivos'\n(se tiver 3 opções, marque a PRIMEIRA)\ne depois VOLTE ao app",
+                Toast.LENGTH_LONG).show()
+            pedir()
+        }
     }
 
     private fun pedir() {
@@ -140,9 +171,15 @@ class MainActivity : Activity() {
             try {
                 startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
             } catch (e: Exception) {
-                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                try {
+                    startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                } catch (e2: Exception) {
+                    aguardandoAcesso = false
+                    Toast.makeText(this,
+                        "Abra manual:\nConfigurações → Apps → LUKS STORE → Permissões → Arquivos e mídia",
+                        Toast.LENGTH_LONG).show()
+                }
             }
-            Toast.makeText(this, "Conceda 'Todos os arquivos' e volte", Toast.LENGTH_LONG).show()
         } else {
             requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), 100)
         }
@@ -152,7 +189,7 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 100 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             aguardandoAcesso = false
-            tvStatus.text = "🔓 Acesso total: ATIVO"
+            tvStatus.text = "🔓 Acesso total: ATIVO ✅"
         }
     }
 
@@ -168,8 +205,14 @@ class MainActivity : Activity() {
     }
 
     private fun abrirProprio() {
-        if (temAcesso()) nav.abrirInicio(false)
-        else pedir()
+        if (temAcesso() && testeAcessoReal()) {
+            nav.abrirInicio(false)
+        } else if (temAcesso()) {
+            Toast.makeText(this, "Android/data bloqueado — navegando com Root 🎮", Toast.LENGTH_SHORT).show()
+            nav.navDataTmp(false)
+        } else {
+            pedir()
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
