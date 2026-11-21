@@ -116,7 +116,7 @@ class MainActivity : Activity() {
         this.text = texto
         setTextColor(Color.WHITE)
         textSize = 15f
-        allCaps = false
+        setAllCaps(false)
         background = GradientDrawable().apply {
             setColor(cor)
             cornerRadius = px(14).toFloat()
