@@ -54,7 +54,6 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        // Se o usuário concedeu "Todos os arquivos" nas configurações e voltou
         if (aguardandoAcesso && temAcessoArquivos()) {
             aguardandoAcesso = false
             tvStatus.text = "🔓 Acesso total: ATIVO"
@@ -284,7 +283,6 @@ class MainActivity : Activity() {
 
     // ==================== NAVEGADOR ====================
 
-    // modoDestino = false → seleciona .sh | true → escolher pasta para colar
     private fun navegador(pasta: File, modoDestino: Boolean = false) {
         val itens = pasta.listFiles()
         if (itens == null) {
@@ -353,7 +351,6 @@ class MainActivity : Activity() {
         val uri = data.data ?: return
 
         if (requestCode == 101) {
-            // Script .sh vindo de outro gerenciador
             try {
                 val nome = queryNome(uri) ?: "script.sh"
                 val conteudo = contentResolver.openInputStream(uri)
@@ -364,7 +361,6 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Falha: ${e.message}", Toast.LENGTH_LONG).show()
             }
         } else if (requestCode == 202) {
-            // Arquivo para transporte
             try {
                 transportNome = queryNome(uri)
                 transportUri = uri
@@ -426,7 +422,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // Cria o Process via Shizuku usando reflexão (imune a diferenças de pacote)
     private fun shizukuProcess(cmd: Array<String>): Process {
         val binder = Shizuku.getBinder()
             ?: throw IllegalStateException("Shizuku não conectado")
@@ -458,8 +453,6 @@ class MainActivity : Activity() {
     private fun executar(modo: String) {
         val conteudo = scriptConteudo ?: return
         val tmp = "/data/local/tmp/luks_script.sh"
-
-        // ===== Terminal com ENTRADA (estilo MT Manager) =====
 
         val tv = TextView(this).apply {
             setTextColor(0xFFB8F5C0.toInt())
@@ -526,4 +519,15 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Nenhum script em execução", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (t
+            if (texto.isEmpty()) return@setOnClickListener
+            anexar(tv, "> $texto\n")
+            etInput.setText("")
+            try {
+                proc.outputStream.write((texto + "\n").toByteArray())
+                proc.outputStream.flush()
+            } catch (e: Exception) {
+                anexar(tv, "[processo encerrado — não foi possível enviar]\n")
+            }
+        }
+
+        Thread
