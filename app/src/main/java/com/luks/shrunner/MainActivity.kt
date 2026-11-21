@@ -50,6 +50,12 @@ class MainActivity : Activity() {
                 tvStatus.text = "🔓 Acesso total: ATIVO ✅"
                 Toast.makeText(this, "🔓 Acesso REAL confirmado! ✅", Toast.LENGTH_SHORT).show()
                 if (nav.transportUri != null) nav.abrirInicio(true)
+            } else if (temAcesso()) {
+                tvStatus.text = "⚠️ Toggle ativo, mas Android/data bloqueado"
+                Toast.makeText(this,
+                    "O sistema bloqueia Android/data.\nUse o 🎯 Android/data (Root) no navegador — acessa tudo via su!",
+                    Toast.LENGTH_LONG).show()
+                if (nav.transportUri != null) nav.abrirInicio(true)
             } else {
                 tvStatus.text = "🔒 Acesso total: BLOQUEADO"
                 Toast.makeText(this,
@@ -114,7 +120,7 @@ class MainActivity : Activity() {
         col.addView(botao("⚡  Executar via Shizuku", 0xFF2E7D5B.toInt()) { acaoShizuku() }, lb)
         col.addView(botao("🧱  Executar via Root", 0xFF8C3B2E.toInt()) { acaoRoot() }, lb)
         col.addView(TextView(this).apply {
-            text = "🔓 Acesso total libera Android/data.\n🎮 Root navega TUDO sem permissão."
+            text = "🎯 Android/data abre via Root (sempre funciona).\nTerminal aceita respostas de menu."
             setTextColor(0xFF6E5A8A.toInt())
             textSize = 12f
             gravity = Gravity.CENTER
@@ -154,7 +160,7 @@ class MainActivity : Activity() {
             } else {
                 tvStatus.text = "⚠️ Toggle ativo, mas Android/data bloqueado"
                 Toast.makeText(this,
-                    "O toggle está ativo mas o sistema bloqueia Android/data.\nUse o navegador Root 🎮 que acessa tudo via su!",
+                    "Toggle ativo mas o sistema bloqueia Android/data.\nSem problema: use 🎯 Android/data (Root) no navegador!",
                     Toast.LENGTH_LONG).show()
             }
         } else {
@@ -205,14 +211,8 @@ class MainActivity : Activity() {
     }
 
     private fun abrirProprio() {
-        if (temAcesso() && testeAcessoReal()) {
-            nav.abrirInicio(false)
-        } else if (temAcesso()) {
-            Toast.makeText(this, "Android/data bloqueado — navegando com Root 🎮", Toast.LENGTH_SHORT).show()
-            nav.navDataTmp(false)
-        } else {
-            pedir()
-        }
+        if (temAcesso()) nav.abrirInicio(false)
+        else pedir()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
