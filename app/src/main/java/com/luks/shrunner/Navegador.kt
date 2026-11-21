@@ -22,7 +22,7 @@ class Navegador(
     var onRunShz: ((String) -> Unit)? = null
 
     fun temRoot(): Boolean = try {
-        val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+        val p = Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c", "id"))
         p.waitFor() == 0
     } catch (e: Exception) { false }
 
@@ -49,13 +49,12 @@ class Navegador(
         Thread {
             val r = temRoot()
             act.runOnUiThread {
-                if (r) navShell("/storage/emulated/0/Android/data", destino)
-                else Toast.makeText(act, "Sem Root para Android/data", Toast.LENGTH_LONG).show()
+                if (r) navShell("/data/data", destino)
+                else Toast.makeText(act, "Sem Root", Toast.LENGTH_LONG).show()
             }
         }.start()
     }
 
-    // ===== NOVO: Navegador via SHIZUKU (contexto shell = igual MT Manager) =====
     fun navShz(path: String, destino: Boolean) {
         val exec = shzExec
         if (exec == null) {
@@ -180,36 +179,6 @@ class Navegador(
         }.start()
     }
 
-    private fun criarPastaShz(path: String, destino: Boolean) {
-        val input = EditText(act)
-        input.hint = "nome da pasta"
-        AlertDialog.Builder(act)
-            .setTitle("Nova pasta (Shizuku)")
-            .setMessage("Criar em:\n$path")
-            .setView(input)
-            .setPositiveButton("Criar") { _, _ ->
-                val n = input.text.toString().trim()
-                if (n.isNotEmpty()) {
-                    Thread {
-                        val exec = shzExec
-                        var ok = false
-                        if (exec != null) {
-                            val p = exec(arrayOf("sh", "-c", "mkdir -p '$path/$n'"))
-                            p.waitFor()
-                            ok = p.exitValue() == 0
-                        }
-                        val f = ok
-                        act.runOnUiThread {
-                            if (f) navShz("$path/$n", destino)
-                            else Toast.makeText(act, "Falha ao criar", Toast.LENGTH_SHORT).show()
-                        }
-                    }.start()
-                }
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
-    }
-
     fun navFile(pasta: File, destino: Boolean) {
         val itens = pasta.listFiles()
         if (itens == null) {
@@ -265,7 +234,7 @@ class Navegador(
     fun navShell(path: String, destino: Boolean) {
         Thread {
             val saida = try {
-                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "ls -la '$path' 2>&1"))
+                val p = Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c", "ls -la '$path' 2>&1"))
                 val txt = p.inputStream.bufferedReader().readText()
                 p.waitFor()
                 txt
@@ -330,7 +299,7 @@ class Navegador(
             try {
                 val local = File(act.cacheDir, nome)
                 act.contentResolver.openInputStream(uri)?.use { e -> local.outputStream().use { e.copyTo(it) } }
-                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "cp '${local.absolutePath}' '$destino/' && chmod 777 '$destino/$nome'"))
+                val p = Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c", "cp '${local.absolutePath}' '$destino/' && chmod 777 '$destino/$nome'"))
                 p.waitFor()
                 val ok = p.exitValue() == 0
                 local.delete()
@@ -351,7 +320,7 @@ class Navegador(
     fun carregarShell(caminho: String) {
         Thread {
             try {
-                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat '$caminho'"))
+                val p = Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c", "cat '$caminho'"))
                 val txt = p.inputStream.bufferedReader().readText()
                 p.waitFor()
                 act.runOnUiThread {
