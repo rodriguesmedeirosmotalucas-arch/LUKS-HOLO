@@ -105,10 +105,10 @@ class MainActivity : Activity() {
         coluna.addView(titulo)
         coluna.addView(subtitulo)
         coluna.addView(tvStatus, lpStatus)
-        coluna.addView(botao("📂  Carregar script (.sh)", 0xFF7B2FBE) { abrirSeletor() }, lpBotao)
-        coluna.addView(botao("🗂️  Gerenciador próprio", 0xFF4B1D6E) { abrirGerenciadorProprio() }, lpBotao)
-        coluna.addView(botao("⚡  Executar via Shizuku", 0xFF2E7D5B) { acaoShizuku() }, lpBotao)
-        coluna.addView(botao("🧱  Executar via Root", 0xFF8C3B2E) { acaoRoot() }, lpBotao)
+        coluna.addView(botao("📂  Carregar script (.sh)", 0xFF7B2FBE.toInt()) { abrirSeletor() }, lpBotao)
+        coluna.addView(botao("🗂️  Gerenciador próprio", 0xFF4B1D6E.toInt()) { abrirGerenciadorProprio() }, lpBotao)
+        coluna.addView(botao("⚡  Executar via Shizuku", 0xFF2E7D5B.toInt()) { acaoShizuku() }, lpBotao)
+        coluna.addView(botao("🧱  Executar via Root", 0xFF8C3B2E.toInt()) { acaoRoot() }, lpBotao)
         coluna.addView(dica)
     }
 
