@@ -20,6 +20,8 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import rikka.shizuku.IRemoteProcess
+import rikka.shizuku.IShizukuService
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuRemoteProcess
 import java.io.File
@@ -285,6 +287,17 @@ class MainActivity : Activity() {
         }
     }
 
+    // Cria um Process via API pública do Shizuku (IShizukuService)
+    private fun shizukuProcess(cmd: Array<String>): Process {
+        val binder = Shizuku.getBinder()
+            ?: throw IllegalStateException("Shizuku não conectado")
+        val service = IShizukuService.Stub.asInterface(binder)
+        val remote: IRemoteProcess = service.newProcess(cmd, null, null)
+        val ctor = ShizukuRemoteProcess::class.java.getDeclaredConstructor(IRemoteProcess::class.java)
+        ctor.isAccessible = true
+        return ctor.newInstance(remote) as Process
+    }
+
     private fun anexar(tv: TextView, texto: String) {
         runOnUiThread { tv.append(texto) }
     }
@@ -314,7 +327,7 @@ class MainActivity : Activity() {
                 val escritor = if (modo == "root")
                     Runtime.getRuntime().exec(arrayOf("su", "-c", "cat > $tmp"))
                 else
-                    ShizukuRemoteProcess(arrayOf("sh", "-c", "cat > $tmp"), null, null)
+                    shizukuProcess(arrayOf("sh", "-c", "cat > $tmp"))
                 escritor.outputStream.use { it.write(conteudo.toByteArray()) }
                 escritor.waitFor()
 
@@ -322,14 +335,14 @@ class MainActivity : Activity() {
                 val chmod = if (modo == "root")
                     Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 777 $tmp"))
                 else
-                    ShizukuRemoteProcess(arrayOf("sh", "-c", "chmod 777 $tmp"), null, null)
+                    shizukuProcess(arrayOf("sh", "-c", "chmod 777 $tmp"))
                 chmod.waitFor()
 
                 // 3) Executar
                 val proc = if (modo == "root")
                     Runtime.getRuntime().exec(arrayOf("su", "-c", "sh $tmp"))
                 else
-                    ShizukuRemoteProcess(arrayOf("sh", tmp), null, null)
+                    shizukuProcess(arrayOf("sh", tmp))
 
                 val t1 = Thread {
                     proc.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") }
