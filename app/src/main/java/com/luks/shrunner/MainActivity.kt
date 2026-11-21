@@ -48,7 +48,6 @@ class MainActivity : Activity() {
         if (aguardandoAcesso && temAcesso()) {
             aguardandoAcesso = false
             tvStatus.text = "🔓 Acesso total: ATIVO"
-            if (transportUri != null) nav(Environment.getExternalStorageDirectory(), true)
         }
     }
 
@@ -99,14 +98,15 @@ class MainActivity : Activity() {
         val lb = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(52))
         lb.bottomMargin = px(10)
 
-        col.addView(botao("📂  Carregar script (.sh)", 0xFF7B2FBE.toInt()) { abrirSeletor() }, lb)
+        col.addView(botao("📂  Carregar script (escolher gerenciador)", 0xFF7B2FBE.toInt()) { abrirArquivo(101) }, lb)
         col.addView(botao("🗂️  Gerenciador próprio", 0xFF4B1D6E.toInt()) { abrirProprio() }, lb)
-        col.addView(botao("📦  Transportar arquivo", 0xFF8C6A2E.toInt()) { transportar() }, lb)
+        col.addView(botao("📦  Transportar arquivo (ZArchiver etc.)", 0xFF8C6A2E.toInt()) { abrirArquivo(202) }, lb)
+        col.addView(botao("🎮  Navegar /data/local/tmp (Root)", 0xFF5C2E8C.toInt()) { navDataTmp(false) }, lb)
         col.addView(botao("🔓  Ativar acesso total", 0xFF1D5C8C.toInt()) { acaoPerm() }, lb)
         col.addView(botao("⚡  Executar via Shizuku", 0xFF2E7D5B.toInt()) { acaoShizuku() }, lb)
         col.addView(botao("🧱  Executar via Root", 0xFF8C3B2E.toInt()) { acaoRoot() }, lb)
         col.addView(TextView(this).apply {
-            text = "Scripts com menu aceitam resposta no terminal.\nUse Transportar p/ copiar p/ Android/data."
+            text = "Terminal aceita respostas de menu.\nTransportar + Root copiam até em /data."
             setTextColor(0xFF6E5A8A.toInt())
             textSize = 12f
             gravity = Gravity.CENTER
@@ -154,40 +154,222 @@ class MainActivity : Activity() {
         if (requestCode == 100 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             aguardandoAcesso = false
             tvStatus.text = "🔓 Acesso total: ATIVO"
-            nav(Environment.getExternalStorageDirectory(), transportUri != null)
         }
     }
 
-    private fun abrirSeletor() {
+    private fun baseDir(): File {
+        val f = File("/storage/emulated/0")
+        if (f.exists()) return f
+        val e = Environment.getExternalStorageDirectory()
+        return e ?: File("/sdcard")
+    }
+
+    // Abre seletor onde o usuário ESCOLHE o gerenciador (ZArchiver, MT Manager...)
+    private fun abrirArquivo(code: Int) {
         try {
-            val i = Intent(Intent.ACTION_OPEN_DOCUMENT)
-            i.addCategory(Intent.CATEGORY_OPENABLE)
+            val i = Intent(Intent.ACTION_GET_CONTENT)
             i.type = "*/*"
-            startActivityForResult(i, 101)
+            i.addCategory(Intent.CATEGORY_OPENABLE)
+            startActivityForResult(Intent.createChooser(i, "Escolha o gerenciador"), code)
         } catch (e: Exception) {
             Toast.makeText(this, "Nenhum gerenciador encontrado", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun abrirProprio() {
-        if (temAcesso()) nav(Environment.getExternalStorageDirectory(), false)
+        if (temAcesso()) navFile(baseDir(), false)
         else pedir()
     }
 
-    private fun transportar() {
-        try {
-            val i = Intent(Intent.ACTION_OPEN_DOCUMENT)
-            i.addCategory(Intent.CATEGORY_OPENABLE)
-            i.type = "*/*"
-            startActivityForResult(i, 202)
-        } catch (e: Exception) {
-            Toast.makeText(this, "Nenhum gerenciador encontrado", Toast.LENGTH_SHORT).show()
+    private fun temRoot(): Boolean = try {
+        val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+        p.waitFor() == 0
+    } catch (e: Exception) { false }
+
+    private fun navDataTmp(destino: Boolean) {
+        Thread {
+            val r = temRoot()
+            runOnUiThread {
+                if (r) navShell("/data/local/tmp", destino)
+                else Toast.makeText(this, "Root não disponível (conceda no su)", Toast.LENGTH_LONG).show()
+            }
+        }.start()
+    }
+
+    // ============ NAVEGADOR (armazenamento normal) ============
+    private fun navFile(pasta: File, destino: Boolean) {
+        val itens = pasta.listFiles()
+        if (itens == null) {
+            if (temRootQuick()) navShell(pasta.absolutePath, destino)
+            else Toast.makeText(this, "Sem acesso: ${pasta.absolutePath}", Toast.LENGTH_SHORT).show()
+            return
         }
+        val ord = itens.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase() })
+        val temPai = pasta.parentFile != null
+        val nomes = ArrayList<String>()
+        if (temPai) nomes.add("⬆️  ..")
+        nomes.add("🎯  Ir para Android/data")
+        nomes.add("🎮  Ir para /data/local/tmp (Root)")
+        if (destino) {
+            nomes.add("✅  COPIAR ARQUIVO AQUI")
+            nomes.add("➕  Criar pasta")
+        }
+        ord.forEach { nomes.add(if (it.isDirectory) "📁 ${it.name}" else "📄 ${it.name}") }
+
+        val off = (if (temPai) 1 else 0) + 2 + (if (destino) 2 else 0)
+        val iData = if (temPai) 1 else 0
+        val iTmp = iData + 1
+        val iColar = iTmp + 1
+        val iCriar = iColar + 1
+
+        AlertDialog.Builder(this)
+            .setTitle(pasta.absolutePath)
+            .setItems(nomes.toTypedArray()) { _, pos ->
+                when {
+                    temPai && pos == 0 -> navFile(pasta.parentFile!!, destino)
+                    pos == iData -> {
+                        val d = File("/storage/emulated/0/Android/data")
+                        if (d.exists()) navFile(d, destino)
+                        else navShell("/storage/emulated/0/Android/data", destino)
+                    }
+                    pos == iTmp -> navDataTmp(destino)
+                    destino && pos == iColar -> colar(pasta)
+                    destino && pos == iCriar -> novaPasta(pasta, destino)
+                    else -> {
+                        val alvo = ord[pos - off]
+                        if (alvo.isDirectory) navFile(alvo, destino)
+                        else if (destino) Toast.makeText(this, "Use 'COPIAR ARQUIVO AQUI'", Toast.LENGTH_SHORT).show()
+                        else if (alvo.name.endsWith(".sh")) {
+                            try {
+                                carregar(alvo.readText(), alvo.name)
+                            } catch (e: Exception) {
+                                Toast.makeText(this, "Falha ao ler: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                        } else Toast.makeText(this, "Escolha um arquivo .sh", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun temRootQuick(): Boolean = try {
+        val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+        p.waitFor() == 0
+    } catch (e: Exception) { false }
+
+    // ============ NAVEGADOR ROOT (shell) — igual MT Manager ============
+    private fun navShell(path: String, destino: Boolean) {
+        Thread {
+            val saida = try {
+                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "ls -la '$path' 2>&1"))
+                val txt = p.inputStream.bufferedReader().readText()
+                p.waitFor()
+                txt
+            } catch (e: Exception) {
+                "ERRO:${e.message}"
+            }
+            runOnUiThread {
+                if (saida.startsWith("ERRO") || saida.contains("denied") || saida.contains("No such")) {
+                    Toast.makeText(this, "Root sem acesso a: $path", Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
+                val entradas = saida.split("\n")
+                    .filter { it.isNotBlank() && !it.startsWith("total") }
+                    .mapNotNull { l ->
+                        val parts = l.trim().split(Regex("\\s+"), 9)
+                        if (parts.size < 9) null else Pair(parts[8], parts[0].startsWith("d"))
+                    }
+                    .filter { it.first != "." && it.first != ".." }
+                    .sortedWith(compareByDescending<Pair<String, Boolean>> { it.second }.thenBy { it.first.lowercase() })
+
+                val nomes = ArrayList<String>()
+                nomes.add("⬆️  ..")
+                if (destino) nomes.add("✅  COPIAR ARQUIVO AQUI (Root)")
+                entradas.forEach { nomes.add(if (it.second) "📁 ${it.first}" else "📄 ${it.first}") }
+
+                val off = 1 + (if (destino) 1 else 0)
+                val iColar = 1
+
+                AlertDialog.Builder(this)
+                    .setTitle("[Root] $path")
+                    .setItems(nomes.toTypedArray()) { _, pos ->
+                        when {
+                            pos == 0 -> {
+                                if (path != "/") {
+                                    val pai = path.substringBeforeLast("/", "/")
+                                    navShell(if (pai.isBlank()) "/" else pai, destino)
+                                }
+                            }
+                            destino && pos == iColar -> colarShell(path)
+                            else -> {
+                                val e = entradas[pos - off]
+                                val novo = "$path/${e.first}"
+                                if (e.second) navShell(novo, destino)
+                                else if (destino) Toast.makeText(this, "Use 'COPIAR AQUI (Root)'", Toast.LENGTH_SHORT).show()
+                                else if (e.first.endsWith(".sh")) carregarShell(novo)
+                                else Toast.makeText(this, "Escolha um arquivo .sh", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            }
+        }.start()
+    }
+
+    private fun colarShell(destino: String) {
+        val uri = transportUri
+        val nome = transportNome
+        if (uri == null || nome == null) {
+            Toast.makeText(this, "Nenhum arquivo selecionado", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Thread {
+            try {
+                val local = File(cacheDir, nome)
+                contentResolver.openInputStream(uri)?.use { e -> local.outputStream().use { e.copyTo(it) } }
+                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "cp '${local.absolutePath}' '$destino/' && chmod 777 '$destino/$nome'"))
+                p.waitFor()
+                val ok = p.exitValue() == 0
+                local.delete()
+                runOnUiThread {
+                    if (ok) {
+                        transportUri = null
+                        transportNome = null
+                        tvStatus.text = "📦 Copiado (Root): $destino/$nome"
+                        Toast.makeText(this, "✅ Copiado para:\n$destino/$nome", Toast.LENGTH_LONG).show()
+                    } else Toast.makeText(this, "Falha no cp (Root)", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, "Falha: ${e.message}", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
+    private fun carregarShell(caminho: String) {
+        Thread {
+            try {
+                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat '$caminho'"))
+                val txt = p.inputStream.bufferedReader().readText()
+                p.waitFor()
+                runOnUiThread {
+                    if (txt.isNotBlank()) carregar(txt, caminho.substringAfterLast("/"))
+                    else Toast.makeText(this, "Arquivo vazio/ilegível", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, "Falha: ${e.message}", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
     }
 
     private fun colar(destino: File) {
-        val uri = transportUri ?: return
-        val nome = transportNome ?: return
+        val uri = transportUri
+        val nome = transportNome
+        if (uri == null || nome == null) {
+            Toast.makeText(this, "Nenhum arquivo selecionado", Toast.LENGTH_SHORT).show()
+            return
+        }
         try {
             val alvo = File(destino, nome)
             contentResolver.openInputStream(uri)?.use { e -> alvo.outputStream().use { e.copyTo(it) } }
@@ -211,61 +393,8 @@ class MainActivity : Activity() {
                 val n = input.text.toString().trim()
                 if (n.isNotEmpty()) {
                     val nova = File(pasta, n)
-                    if (nova.mkdirs() || nova.exists()) nav(nova, destino)
+                    if (nova.mkdirs() || nova.exists()) navFile(nova, destino)
                     else Toast.makeText(this, "Falha ao criar", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
-    }
-
-    private fun nav(pasta: File, destino: Boolean) {
-        val itens = pasta.listFiles()
-        if (itens == null) {
-            Toast.makeText(this, "Sem acesso: ${pasta.absolutePath}", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val ord = itens.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase() })
-        val temPai = pasta.parentFile != null
-        val nomes = ArrayList<String>()
-        if (temPai) nomes.add("⬆️  ..")
-        if (destino) {
-            nomes.add("✅  COPIAR ARQUIVO AQUI")
-            nomes.add("➕  Criar pasta")
-            nomes.add("🎯  Ir para Android/data")
-        }
-        ord.forEach { nomes.add(if (it.isDirectory) "📁 ${it.name}" else "📄 ${it.name}") }
-
-        val extra = if (destino) 3 else 0
-        val off = (if (temPai) 1 else 0) + extra
-        val iColar = if (temPai) 1 else 0
-        val iCriar = iColar + 1
-        val iData = iColar + 2
-
-        AlertDialog.Builder(this)
-            .setTitle(pasta.absolutePath)
-            .setItems(nomes.toTypedArray()) { _, pos ->
-                when {
-                    temPai && pos == 0 -> nav(pasta.parentFile!!, destino)
-                    destino && pos == iColar -> colar(pasta)
-                    destino && pos == iCriar -> novaPasta(pasta, destino)
-                    destino && pos == iData -> {
-                        val d = File(Environment.getExternalStorageDirectory(), "Android/data")
-                        if (d.exists()) nav(d, true)
-                        else Toast.makeText(this, "Android/data não encontrado", Toast.LENGTH_SHORT).show()
-                    }
-                    else -> {
-                        val alvo = ord[pos - off]
-                        if (alvo.isDirectory) nav(alvo, destino)
-                        else if (destino) Toast.makeText(this, "Use 'COPIAR ARQUIVO AQUI'", Toast.LENGTH_SHORT).show()
-                        else if (alvo.name.endsWith(".sh")) {
-                            try {
-                                carregar(alvo.readText(), alvo.name)
-                            } catch (e: Exception) {
-                                Toast.makeText(this, "Falha ao ler: ${e.message}", Toast.LENGTH_LONG).show()
-                            }
-                        } else Toast.makeText(this, "Escolha um arquivo .sh", Toast.LENGTH_SHORT).show()
-                    }
                 }
             }
             .setNegativeButton("Cancelar", null)
@@ -288,7 +417,7 @@ class MainActivity : Activity() {
         } else if (requestCode == 202) {
             transportNome = queryNome(uri)
             transportUri = uri
-            if (temAcesso()) nav(Environment.getExternalStorageDirectory(), true)
+            if (temAcesso()) navFile(baseDir(), true)
             else {
                 Toast.makeText(this, "Ative o acesso total p/ escolher destino", Toast.LENGTH_LONG).show()
                 pedir()
@@ -345,99 +474,4 @@ class MainActivity : Activity() {
         val svc = stub.getMethod("asInterface", IBinder::class.java).invoke(null, binder)
         val np = svc.javaClass.methods.first { it.name == "newProcess" && it.parameterTypes.size == 3 }
         val remote = np.invoke(svc, cmd, null, null)
-        val ctor = ShizukuRemoteProcess::class.java.declaredConstructors.first {
-            it.parameterTypes.size == 1 && it.parameterTypes[0].simpleName == "IRemoteProcess"
-        }
-        ctor.isAccessible = true
-        return ctor.newInstance(remote) as Process
-    }
-
-    private fun anexar(tv: TextView, s: String) {
-        runOnUiThread { tv.append(s) }
-    }
-
-    private fun executar(modo: String) {
-        val conteudo = scriptConteudo ?: return
-        val tmp = "/data/local/tmp/luks_script.sh"
-
-        val tv = TextView(this).apply {
-            setTextColor(0xFFB8F5C0.toInt())
-            typeface = Typeface.MONOSPACE
-            textSize = 12f
-            setPadding(px(12), px(12), px(12), px(12))
-            text = "Script: $scriptNome\nModo: ${if (modo == "root") "Root" else "Shizuku"}\n\n"
-        }
-        val scroll = ScrollView(this).apply { addView(tv) }
-        val input = EditText(this).apply {
-            hint = "Digite e envie..."
-            setTextColor(Color.WHITE)
-            setHintTextColor(0xFF6E5A8A.toInt())
-            maxLines = 1
-        }
-        val bEnv = Button(this).apply {
-            text = "Enviar ➤"
-            setTextColor(Color.WHITE)
-            setAllCaps(false)
-            background = card(0xFF2E7D5B.toInt(), 10)
-        }
-        val linha = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(px(8), px(6), px(8), px(8))
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        linha.addView(input, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        linha.addView(bEnv)
-        val caixa = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF0D0514.toInt())
-        }
-        caixa.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(380)))
-        caixa.addView(linha)
-        AlertDialog.Builder(this)
-            .setTitle("Terminal")
-            .setView(caixa)
-            .setPositiveButton("Fechar", null)
-            .show()
-
-        bEnv.setOnClickListener {
-            val p = procAtual
-            val t = input.text.toString().trim()
-            if (p == null) Toast.makeText(this, "Nenhum script em execução", Toast.LENGTH_SHORT).show()
-            else if (t.isNotEmpty()) {
-                anexar(tv, "> $t\n")
-                input.setText("")
-                try {
-                    p.outputStream.write((t + "\n").toByteArray())
-                    p.outputStream.flush()
-                } catch (e: Exception) {
-                    anexar(tv, "[encerrado]\n")
-                }
-            }
-        }
-
-        Thread {
-            try {
-                val w = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "cat > $tmp"))
-                        else shzProc(arrayOf("sh", "-c", "cat > $tmp"))
-                w.outputStream.use { it.write(conteudo.toByteArray()) }
-                w.waitFor()
-                val c = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 777 $tmp"))
-                        else shzProc(arrayOf("sh", "-c", "chmod 777 $tmp"))
-                c.waitFor()
-                val p = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "sh $tmp"))
-                        else shzProc(arrayOf("sh", tmp))
-                procAtual = p
-                val t1 = Thread { p.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") } }
-                val t2 = Thread { p.errorStream.bufferedReader().forEachLine { anexar(tv, "[erro] $it\n") } }
-                t1.start(); t2.start()
-                p.waitFor()
-                t1.join(); t2.join()
-                procAtual = null
-                anexar(tv, "\n[finalizado — código ${p.exitValue()}]\n")
-            } catch (e: Exception) {
-                procAtual = null
-                anexar(tv, "\n[ERRO] ${e.message}\n")
-            }
-        }.start()
-    }
-}
+        val ctor 
