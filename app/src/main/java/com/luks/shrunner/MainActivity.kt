@@ -13,7 +13,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.IBinder
-import android.provider.OpenableColumns
 import android.provider.Settings
 import android.view.Gravity
 import android.widget.Button
@@ -29,10 +28,9 @@ import java.io.File
 class MainActivity : Activity() {
 
     private lateinit var tvStatus: TextView
+    private lateinit var nav: Navegador
     private var scriptConteudo: String? = null
     private var scriptNome: String? = null
-    private var transportUri: Uri? = null
-    private var transportNome: String? = null
     private var aguardandoAcesso = false
 
     @Volatile
@@ -40,6 +38,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        nav = Navegador(this, { txt, nome -> carregar(txt, nome) }, { t -> tvStatus.text = t })
         montarTela()
     }
 
@@ -101,7 +100,7 @@ class MainActivity : Activity() {
         col.addView(botao("📂  Carregar script (escolher gerenciador)", 0xFF7B2FBE.toInt()) { abrirArquivo(101) }, lb)
         col.addView(botao("🗂️  Gerenciador próprio", 0xFF4B1D6E.toInt()) { abrirProprio() }, lb)
         col.addView(botao("📦  Transportar arquivo (ZArchiver etc.)", 0xFF8C6A2E.toInt()) { abrirArquivo(202) }, lb)
-        col.addView(botao("🎮  Navegar /data/local/tmp (Root)", 0xFF5C2E8C.toInt()) { navDataTmp(false) }, lb)
+        col.addView(botao("🎮  Navegar /data/local/tmp (Root)", 0xFF5C2E8C.toInt()) { nav.navDataTmp(false) }, lb)
         col.addView(botao("🔓  Ativar acesso total", 0xFF1D5C8C.toInt()) { acaoPerm() }, lb)
         col.addView(botao("⚡  Executar via Shizuku", 0xFF2E7D5B.toInt()) { acaoShizuku() }, lb)
         col.addView(botao("🧱  Executar via Root", 0xFF8C3B2E.toInt()) { acaoRoot() }, lb)
@@ -157,13 +156,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun baseDir(): File {
-        val f = File("/storage/emulated/0")
-        if (f.exists()) return f
-        val e = Environment.getExternalStorageDirectory()
-        return e ?: File("/sdcard")
-    }
-
     private fun abrirArquivo(code: Int) {
         try {
             val i = Intent(Intent.ACTION_GET_CONTENT)
@@ -176,21 +168,152 @@ class MainActivity : Activity() {
     }
 
     private fun abrirProprio() {
-        if (temAcesso()) navFile(baseDir(), false)
+        if (temAcesso()) nav.abrirInicio(false)
         else pedir()
     }
 
-    private fun temRoot(): Boolean = try {
-        val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
-        p.waitFor() == 0
-    } catch (e: Exception) { false }
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != RESULT_OK || data == null) return
+        val uri = data.data ?: return
+        nav.resultado(requestCode, uri)
+    }
 
-    private fun navDataTmp(destino: Boolean) {
+    private fun carregar(txt: String, nome: String) {
+        scriptConteudo = txt
+        scriptNome = nome
+        tvStatus.text = "📜 $nome pronto"
+        Toast.makeText(this, "Script carregado!", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun acaoRoot() {
+        if (scriptConteudo == null) {
+            Toast.makeText(this, "Carregue um script primeiro", Toast.LENGTH_SHORT).show()
+            return
+        }
+        executar("root")
+    }
+
+    private fun acaoShizuku() {
+        if (scriptConteudo == null) {
+            Toast.makeText(this, "Carregue um script primeiro", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val ok = try {
+            Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        } catch (e: Exception) { false }
+        if (ok) executar("shizuku")
+        else try {
+            Shizuku.requestPermission(200)
+            Toast.makeText(this, "Conceda a permissão e toque de novo", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Shizuku não está rodando", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun shzProc(cmd: Array<String>): Process {
+        val binder = Shizuku.getBinder() ?: throw IllegalStateException("Shizuku não conectado")
+        val stub = try {
+            Class.forName("rikka.shizuku.server.IShizukuService\$Stub")
+        } catch (e: ClassNotFoundException) {
+            Class.forName("moe.shizuku.server.IShizukuService\$Stub")
+        }
+        val svc = stub.getMethod("asInterface", IBinder::class.java).invoke(null, binder)
+        val np = svc.javaClass.methods.first { it.name == "newProcess" && it.parameterTypes.size == 3 }
+        val remote = np.invoke(svc, cmd, null, null)
+        val ctor = ShizukuRemoteProcess::class.java.declaredConstructors.first {
+            it.parameterTypes.size == 1 && it.parameterTypes[0].simpleName == "IRemoteProcess"
+        }
+        ctor.isAccessible = true
+        return ctor.newInstance(remote) as Process
+    }
+
+    private fun anexar(tv: TextView, s: String) {
+        runOnUiThread { tv.append(s) }
+    }
+
+    private fun executar(modo: String) {
+        val conteudo = scriptConteudo ?: return
+        val tmp = "/data/local/tmp/luks_script.sh"
+
+        val tv = TextView(this).apply {
+            setTextColor(0xFFB8F5C0.toInt())
+            typeface = Typeface.MONOSPACE
+            textSize = 12f
+            setPadding(px(12), px(12), px(12), px(12))
+            text = "Script: $scriptNome\nModo: ${if (modo == "root") "Root" else "Shizuku"}\n\n"
+        }
+        val scroll = ScrollView(this).apply { addView(tv) }
+        val input = EditText(this).apply {
+            hint = "Digite e envie..."
+            setTextColor(Color.WHITE)
+            setHintTextColor(0xFF6E5A8A.toInt())
+            maxLines = 1
+        }
+        val bEnv = Button(this).apply {
+            text = "Enviar ➤"
+            setTextColor(Color.WHITE)
+            setAllCaps(false)
+            background = card(0xFF2E7D5B.toInt(), 10)
+        }
+        val linha = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(px(8), px(6), px(8), px(8))
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        linha.addView(input, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        linha.addView(bEnv)
+        val caixa = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(0xFF0D0514.toInt())
+        }
+        caixa.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(380)))
+        caixa.addView(linha)
+        AlertDialog.Builder(this)
+            .setTitle("Terminal")
+            .setView(caixa)
+            .setPositiveButton("Fechar", null)
+            .show()
+
+        bEnv.setOnClickListener {
+            val p = procAtual
+            val t = input.text.toString().trim()
+            if (p == null) Toast.makeText(this, "Nenhum script em execução", Toast.LENGTH_SHORT).show()
+            else if (t.isNotEmpty()) {
+                anexar(tv, "> $t\n")
+                input.setText("")
+                try {
+                    p.outputStream.write((t + "\n").toByteArray())
+                    p.outputStream.flush()
+                } catch (e: Exception) {
+                    anexar(tv, "[encerrado]\n")
+                }
+            }
+        }
+
         Thread {
-            val r = temRoot()
-            runOnUiThread {
-                if (r) navShell("/data/local/tmp", destino)
-                else Toast.makeText(this, "Root não disponível (conceda no su)", Toast.LENGTH_LONG).show()
+            try {
+                val w = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "cat > $tmp"))
+                        else shzProc(arrayOf("sh", "-c", "cat > $tmp"))
+                w.outputStream.use { it.write(conteudo.toByteArray()) }
+                w.waitFor()
+                val c = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 777 $tmp"))
+                        else shzProc(arrayOf("sh", "-c", "chmod 777 $tmp"))
+                c.waitFor()
+                val p = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "sh $tmp"))
+                        else shzProc(arrayOf("sh", tmp))
+                procAtual = p
+                val t1 = Thread { p.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") } }
+                val t2 = Thread { p.errorStream.bufferedReader().forEachLine { anexar(tv, "[erro] $it\n") } }
+                t1.start(); t2.start()
+                p.waitFor()
+                t1.join(); t2.join()
+                procAtual = null
+                anexar(tv, "\n[finalizado — código ${p.exitValue()}]\n")
+            } catch (e: Exception) {
+                procAtual = null
+                anexar(tv, "\n[ERRO] ${e.message}\n")
             }
         }.start()
     }
+}
