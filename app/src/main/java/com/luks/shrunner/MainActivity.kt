@@ -78,7 +78,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
         })
         col.addView(TextView(this).apply {
-            text = "SH Runner • Root + Shizuku"
+            text = "SH Runner • Root -mm + Shizuku"
             setTextColor(0xFF9C7BC4.toInt())
             textSize = 14f
             gravity = Gravity.CENTER
@@ -104,12 +104,12 @@ class MainActivity : Activity() {
         col.addView(botao("📂  Carregar script (escolher gerenciador)", 0xFF7B2FBE.toInt()) { abrirArquivo(101) }, lb)
         col.addView(botao("🗂️  Gerenciador próprio", 0xFF4B1D6E.toInt()) { abrirProprio() }, lb)
         col.addView(botao("📦  Transportar arquivo (ZArchiver etc.)", 0xFF8C6A2E.toInt()) { abrirArquivo(202) }, lb)
-        col.addView(botao("🎮  Navegar /data/local/tmp (Root)", 0xFF5C2E8C.toInt()) { nav.navDataTmp(false) }, lb)
+        col.addView(botao("🎮  Navegar /data (Root -mm)", 0xFF5C2E8C.toInt()) { nav.navAndroidData(false) }, lb)
         col.addView(botao("🔓  Ativar acesso total", 0xFF1D5C8C.toInt()) { acaoPerm() }, lb)
         col.addView(botao("⚡  Executar via Shizuku", 0xFF2E7D5B.toInt()) { acaoShizuku() }, lb)
-        col.addView(botao("🧱  Executar via Root", 0xFF8C3B2E.toInt()) { acaoRoot() }, lb)
+        col.addView(botao("🧱  Executar via Root (-mm)", 0xFF8C3B2E.toInt()) { acaoRoot() }, lb)
         col.addView(TextView(this).apply {
-            text = "🌐 Shizuku vê Android/data igual MT Manager.\nToque num .sh nele p/ executar no lugar original."
+            text = "🧱 Root -mm vê /data/data igual MT Manager.\n🌐 Shizuku vê o storage todo. Terminal aceita menu."
             setTextColor(0xFF6E5A8A.toInt())
             textSize = 12f
             gravity = Gravity.CENTER
@@ -313,7 +313,7 @@ class MainActivity : Activity() {
     private fun executarDeTmp() {
         Thread {
             val saida = try {
-                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "ls /data/local/tmp/*.sh 2>&1"))
+                val p = Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c", "ls /data/local/tmp/*.sh 2>&1"))
                 val txt = p.inputStream.bufferedReader().readText()
                 p.waitFor()
                 txt
@@ -340,21 +340,11 @@ class MainActivity : Activity() {
     private fun executarArquivoDireto(caminho: String) {
         val dir = caminho.substringBeforeLast("/")
         val nome = caminho.substringAfterLast("/")
-        val fixado = "$dir/.luks_fix.sh"
-        terminal("Arquivo: $nome\nCorreção Android/data → /data/media/0") { tv ->
+        terminal("Arquivo: $nome\n[Root -mm] execução no lugar original") { tv ->
             try {
-                anexar(tv, "[1/3] Corrigindo caminhos do script...\n")
-                val fix = Runtime.getRuntime().exec(arrayOf("su", "-c",
-                    "sed 's|/storage/emulated/0/Android/data|/data/media/0/Android/data|g; s|/sdcard/Android/data|/data/media/0/Android/data|g' '$caminho' > $fixado && chmod 777 $fixado"))
-                fix.waitFor()
-                anexar(tv, "[2/3] Diagnóstico do pdcache...\n")
-                val diag = Runtime.getRuntime().exec(arrayOf("su", "-c",
-                    "echo '--- script procura:'; grep -n pdcache '$caminho' | head -4; echo '--- pdcache real:'; find /data/media/0/Android/data /data/data -maxdepth 5 -type d -name 'pdcache' 2>/dev/null | head -5; echo '---fim---'"))
-                diag.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") }
-                diag.waitFor()
-                anexar(tv, "\n[3/3] Executando...\n\n")
-                val p = Runtime.getRuntime().exec(arrayOf("su", "-c",
-                    "export EXTERNAL_STORAGE=/sdcard; export HOME=/data/local/tmp; export TERM=xterm; cd '$dir' && sh $fixado"))
+                anexar(tv, "[executando com namespace GLOBAL (su -mm)...]\n\n")
+                val p = Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c",
+                    "export EXTERNAL_STORAGE=/sdcard; export HOME=/data/local/tmp; export TERM=xterm; cd '$dir' && sh '$caminho'"))
                 procAtual = p
                 val t1 = Thread { p.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") } }
                 val t2 = Thread { p.errorStream.bufferedReader().forEachLine { anexar(tv, "[erro] $it\n") } }
@@ -401,22 +391,22 @@ class MainActivity : Activity() {
         }
         val dir = "/data/local/tmp"
         val tmp = "$dir/luks_script.sh"
-        terminal("Script: $scriptNome\nModo: ${if (modo == "root") "Root" else "Shizuku"}") { tv ->
+        terminal("Script: $scriptNome\nModo: ${if (modo == "root") "Root -mm" else "Shizuku"}") { tv ->
             try {
                 anexar(tv, "[1/3] Enviando script...\n")
-                val prep = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "rm -f $tmp"))
+                val prep = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c", "rm -f $tmp"))
                         else shzProc(arrayOf("sh", "-c", "rm -f $tmp"))
                 prep.waitFor()
-                val w = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "cat > $tmp"))
+                val w = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c", "cat > $tmp"))
                         else shzProc(arrayOf("sh", "-c", "cat > $tmp"))
                 w.outputStream.use { it.write(conteudo.toByteArray()) }
                 w.waitFor()
                 anexar(tv, "[1/3] enviado (exit ${w.exitValue()})\n")
-                val c = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 777 $tmp"))
+                val c = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c", "chmod 777 $tmp"))
                         else shzProc(arrayOf("sh", "-c", "chmod 777 $tmp"))
                 c.waitFor()
                 anexar(tv, "[2/3] Permissões OK\n[3/3] Executando dentro de $dir...\n\n")
-                val p = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "cd $dir && sh $tmp"))
+                val p = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-mm", "-c", "cd $dir && sh $tmp"))
                         else shzProc(arrayOf("sh", "-c", "cd $dir && sh $tmp"))
                 procAtual = p
                 val t1 = Thread { p.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") } }
