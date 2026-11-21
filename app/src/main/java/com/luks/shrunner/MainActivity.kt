@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.IBinder
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.view.Gravity
@@ -20,8 +21,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import rikka.shizuku.IRemoteProcess
-import rikka.shizuku.IShizukuService
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuRemoteProcess
 import java.io.File
@@ -127,7 +126,6 @@ class MainActivity : Activity() {
 
     // ==================== CARREGAR SCRIPT ====================
 
-    // Opção 1: seletor do sistema (outro gerenciador) — não precisa de permissão
     private fun abrirSeletor() {
         try {
             val i = Intent(Intent.ACTION_OPEN_DOCUMENT)
@@ -139,7 +137,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // Opção 2: navegador próprio (dentro do app)
     private fun abrirGerenciadorProprio() {
         if (temAcessoArquivos()) {
             navegador(Environment.getExternalStorageDirectory())
@@ -186,7 +183,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // Navegador de pastas em diálogo (recursivo)
     private fun navegador(pasta: File) {
         val itens = pasta.listFiles()
         if (itens == null) {
@@ -287,13 +283,29 @@ class MainActivity : Activity() {
         }
     }
 
-    // Cria um Process via API pública do Shizuku (IShizukuService)
+    // Cria o Process via Shizuku usando reflexão (imune a diferenças de pacote)
     private fun shizukuProcess(cmd: Array<String>): Process {
         val binder = Shizuku.getBinder()
             ?: throw IllegalStateException("Shizuku não conectado")
-        val service = IShizukuService.Stub.asInterface(binder)
-        val remote: IRemoteProcess = service.newProcess(cmd, null, null)
-        val ctor = ShizukuRemoteProcess::class.java.getDeclaredConstructor(IRemoteProcess::class.java)
+
+        // Localiza o Stub do AIDL (tenta pacote novo, depois antigo)
+        val stub = try {
+            Class.forName("rikka.shizuku.server.IShizukuService\$Stub")
+        } catch (e: ClassNotFoundException) {
+            Class.forName("moe.shizuku.server.IShizukuService\$Stub")
+        }
+        val service = stub.getMethod("asInterface", IBinder::class.java).invoke(null, binder)
+
+        val newProcess = service.javaClass.methods.first {
+            it.name == "newProcess" && it.parameterTypes.size == 3
+        }
+        val remote = newProcess.invoke(service, cmd, null, null)
+
+        // Construtor package-private: ShizukuRemoteProcess(IRemoteProcess)
+        val ctor = ShizukuRemoteProcess::class.java.declaredConstructors.first {
+            it.parameterTypes.size == 1 &&
+                it.parameterTypes[0].simpleName == "IRemoteProcess"
+        }
         ctor.isAccessible = true
         return ctor.newInstance(remote) as Process
     }
