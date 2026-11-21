@@ -44,24 +44,9 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (aguardandoAcesso) {
+        if (aguardandoAcesso && temAcesso()) {
             aguardandoAcesso = false
-            if (temAcesso() && testeAcessoReal()) {
-                tvStatus.text = "🔓 Acesso total: ATIVO ✅"
-                Toast.makeText(this, "🔓 Acesso REAL confirmado! ✅", Toast.LENGTH_SHORT).show()
-                if (nav.transportUri != null) nav.abrirInicio(true)
-            } else if (temAcesso()) {
-                tvStatus.text = "⚠️ Toggle ativo, mas Android/data bloqueado"
-                Toast.makeText(this,
-                    "O sistema bloqueia Android/data.\nUse o 🎯 Android/data (Root) no navegador — acessa tudo via su!",
-                    Toast.LENGTH_LONG).show()
-                if (nav.transportUri != null) nav.abrirInicio(true)
-            } else {
-                tvStatus.text = "🔒 Acesso total: BLOQUEADO"
-                Toast.makeText(this,
-                    "Ainda bloqueado! Faça manual:\nConfigurações → Apps → LUKS STORE → Permissões → Arquivos e mídia → Permitir gerenciar TODOS os arquivos",
-                    Toast.LENGTH_LONG).show()
-            }
+            tvStatus.text = "🔓 Acesso total: ATIVO"
         }
     }
 
@@ -112,6 +97,7 @@ class MainActivity : Activity() {
         val lb = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(52))
         lb.bottomMargin = px(10)
 
+        col.addView(botao("📜  Executar .sh de /data/local/tmp (Root)", 0xFFB85C2E.toInt()) { executarDeTmp() }, lb)
         col.addView(botao("📂  Carregar script (escolher gerenciador)", 0xFF7B2FBE.toInt()) { abrirArquivo(101) }, lb)
         col.addView(botao("🗂️  Gerenciador próprio", 0xFF4B1D6E.toInt()) { abrirProprio() }, lb)
         col.addView(botao("📦  Transportar arquivo (ZArchiver etc.)", 0xFF8C6A2E.toInt()) { abrirArquivo(202) }, lb)
@@ -120,7 +106,7 @@ class MainActivity : Activity() {
         col.addView(botao("⚡  Executar via Shizuku", 0xFF2E7D5B.toInt()) { acaoShizuku() }, lb)
         col.addView(botao("🧱  Executar via Root", 0xFF8C3B2E.toInt()) { acaoRoot() }, lb)
         col.addView(TextView(this).apply {
-            text = "🎯 Android/data abre via Root (sempre funciona).\nTerminal aceita respostas de menu."
+            text = "📜 Executa o arquivo ORIGINAL no lugar dele.\nTerminal aceita respostas de menu."
             setTextColor(0xFF6E5A8A.toInt())
             textSize = 12f
             gravity = Gravity.CENTER
@@ -142,33 +128,11 @@ class MainActivity : Activity() {
         else checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
     }
 
-    // Teste de verdade: consegue LISTAR Android/data?
-    private fun testeAcessoReal(): Boolean {
-        return try {
-            val d = File("/storage/emulated/0/Android/data")
-            d.exists() && d.list() != null
-        } catch (e: Exception) {
-            false
-        }
-    }
-
     private fun acaoPerm() {
         if (temAcesso()) {
-            if (testeAcessoReal()) {
-                tvStatus.text = "🔓 Acesso total: ATIVO ✅"
-                Toast.makeText(this, "Acesso REAL confirmado ✅\nAndroid/data acessível!", Toast.LENGTH_SHORT).show()
-            } else {
-                tvStatus.text = "⚠️ Toggle ativo, mas Android/data bloqueado"
-                Toast.makeText(this,
-                    "Toggle ativo mas o sistema bloqueia Android/data.\nSem problema: use 🎯 Android/data (Root) no navegador!",
-                    Toast.LENGTH_LONG).show()
-            }
-        } else {
-            Toast.makeText(this,
-                "Na tela que abrir: ATIVE 'Permitir gerenciar todos os arquivos'\n(se tiver 3 opções, marque a PRIMEIRA)\ne depois VOLTE ao app",
-                Toast.LENGTH_LONG).show()
-            pedir()
-        }
+            tvStatus.text = "🔓 Acesso total: ATIVO"
+            Toast.makeText(this, "Acesso total ativo ✅", Toast.LENGTH_SHORT).show()
+        } else pedir()
     }
 
     private fun pedir() {
@@ -181,9 +145,6 @@ class MainActivity : Activity() {
                     startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
                 } catch (e2: Exception) {
                     aguardandoAcesso = false
-                    Toast.makeText(this,
-                        "Abra manual:\nConfigurações → Apps → LUKS STORE → Permissões → Arquivos e mídia",
-                        Toast.LENGTH_LONG).show()
                 }
             }
         } else {
@@ -195,7 +156,7 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 100 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             aguardandoAcesso = false
-            tvStatus.text = "🔓 Acesso total: ATIVO ✅"
+            tvStatus.text = "🔓 Acesso total: ATIVO"
         }
     }
 
@@ -275,16 +236,14 @@ class MainActivity : Activity() {
         runOnUiThread { tv.append(s) }
     }
 
-    private fun executar(modo: String) {
-        val conteudo = scriptConteudo ?: return
-        val tmp = "/data/local/tmp/luks_script.sh"
-
+    // ============ TERMINAL GENÉRICO (reutilizado) ============
+    private fun terminal(titulo: String, bloco: (TextView) -> Unit) {
         val tv = TextView(this).apply {
             setTextColor(0xFFB8F5C0.toInt())
             typeface = Typeface.MONOSPACE
             textSize = 12f
             setPadding(px(12), px(12), px(12), px(12))
-            text = "Script: $scriptNome\nModo: ${if (modo == "root") "Root" else "Shizuku"}\n\n"
+            text = "$titulo\n\n"
         }
         val scroll = ScrollView(this).apply { addView(tv) }
         val input = EditText(this).apply {
@@ -334,17 +293,44 @@ class MainActivity : Activity() {
             }
         }
 
+        Thread { bloco(tv) }.start()
+    }
+
+    // ============ NOVO: executa .sh que JÁ ESTÁ em /data/local/tmp ============
+    private fun executarDeTmp() {
         Thread {
+            val saida = try {
+                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "ls /data/local/tmp/*.sh 2>&1"))
+                val txt = p.inputStream.bufferedReader().readText()
+                p.waitFor()
+                txt
+            } catch (e: Exception) { "ERRO:${e.message}" }
+            runOnUiThread {
+                if (saida.startsWith("ERRO") || saida.contains("No such") || saida.contains("denied")) {
+                    Toast.makeText(this, "Root indisponível ou nenhum .sh em /data/local/tmp", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                val arquivos = saida.split("\n").map { it.trim() }.filter { it.endsWith(".sh") }
+                if (arquivos.isEmpty()) {
+                    Toast.makeText(this, "Nenhum .sh em /data/local/tmp", Toast.LENGTH_SHORT).show()
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Executar de /data/local/tmp")
+                        .setItems(arquivos.toTypedArray()) { _, pos -> executarArquivoDireto(arquivos[pos]) }
+                        .setNegativeButton("Cancelar", null)
+                        .show()
+                }
+            }
+        }.start()
+    }
+
+    private fun executarArquivoDireto(caminho: String) {
+        val dir = caminho.substringBeforeLast("/")
+        val nome = caminho.substringAfterLast("/")
+        terminal("Arquivo: $nome\nLocal: $caminho (Root direto)") { tv ->
             try {
-                val w = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "cat > $tmp"))
-                        else shzProc(arrayOf("sh", "-c", "cat > $tmp"))
-                w.outputStream.use { it.write(conteudo.toByteArray()) }
-                w.waitFor()
-                val c = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 777 $tmp"))
-                        else shzProc(arrayOf("sh", "-c", "chmod 777 $tmp"))
-                c.waitFor()
-                val p = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "sh $tmp"))
-                        else shzProc(arrayOf("sh", tmp))
+                anexar(tv, "[executando NO LUGAR ORIGINAL...]\n\n")
+                val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "cd '$dir' && sh '$caminho'"))
                 procAtual = p
                 val t1 = Thread { p.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") } }
                 val t2 = Thread { p.errorStream.bufferedReader().forEachLine { anexar(tv, "[erro] $it\n") } }
@@ -357,6 +343,48 @@ class MainActivity : Activity() {
                 procAtual = null
                 anexar(tv, "\n[ERRO] ${e.message}\n")
             }
-        }.start()
+        }
+    }
+
+    // ============ EXECUTAR script carregado (com logs de etapa) ============
+    private fun executar(modo: String) {
+        val conteudo = scriptConteudo ?: return
+        if (conteudo.isBlank()) {
+            Toast.makeText(this, "Script vazio — carregue de novo", Toast.LENGTH_LONG).show()
+            return
+        }
+        val dir = "/data/local/tmp"
+        val tmp = "$dir/luks_script.sh"
+        terminal("Script: $scriptNome\nModo: ${if (modo == "root") "Root" else "Shizuku"}") { tv ->
+            try {
+                anexar(tv, "[1/3] Enviando script...\n")
+                val prep = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "rm -f $tmp"))
+                        else shzProc(arrayOf("sh", "-c", "rm -f $tmp"))
+                prep.waitFor()
+                val w = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "cat > $tmp"))
+                        else shzProc(arrayOf("sh", "-c", "cat > $tmp"))
+                w.outputStream.use { it.write(conteudo.toByteArray()) }
+                w.waitFor()
+                anexar(tv, "[1/3] enviado (exit ${w.exitValue()})\n")
+                if (w.exitValue() != 0) anexar(tv, "[!] Falha ao enviar — verifique Root/Shizuku\n")
+                val c = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 777 $tmp"))
+                        else shzProc(arrayOf("sh", "-c", "chmod 777 $tmp"))
+                c.waitFor()
+                anexar(tv, "[2/3] Permissões OK\n[3/3] Executando dentro de $dir...\n\n")
+                val p = if (modo == "root") Runtime.getRuntime().exec(arrayOf("su", "-c", "cd $dir && sh $tmp"))
+                        else shzProc(arrayOf("sh", "-c", "cd $dir && sh $tmp"))
+                procAtual = p
+                val t1 = Thread { p.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") } }
+                val t2 = Thread { p.errorStream.bufferedReader().forEachLine { anexar(tv, "[erro] $it\n") } }
+                t1.start(); t2.start()
+                p.waitFor()
+                t1.join(); t2.join()
+                procAtual = null
+                anexar(tv, "\n[finalizado — código ${p.exitValue()}]\n")
+            } catch (e: Exception) {
+                procAtual = null
+                anexar(tv, "\n[ERRO] ${e.message}\n")
+            }
+        }
     }
 }
