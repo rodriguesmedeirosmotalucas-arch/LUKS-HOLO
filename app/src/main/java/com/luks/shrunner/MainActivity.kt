@@ -17,6 +17,7 @@ import android.provider.OpenableColumns
 import android.provider.Settings
 import android.view.Gravity
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -36,6 +37,10 @@ class MainActivity : Activity() {
     private lateinit var tvStatus: TextView
     private var scriptConteudo: String? = null
     private var scriptNome: String? = null
+
+    // Processo em execução (para enviar input do usuário)
+    @Volatile
+    private var procAtual: Process? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,7 +100,7 @@ class MainActivity : Activity() {
         ).apply { bottomMargin = px(12) }
 
         val dica = TextView(this).apply {
-            text = "Carregue um script antes de executar.\nSe o Shizuku não estiver ativo, abra o app Shizuku primeiro."
+            text = "Carregue um script antes de executar.\nScripts com menu (ex: digite 1) aceitam sua resposta no terminal."
             setTextColor(0xFF6E5A8A.toInt())
             textSize = 12f
             gravity = Gravity.CENTER
@@ -288,7 +293,6 @@ class MainActivity : Activity() {
         val binder = Shizuku.getBinder()
             ?: throw IllegalStateException("Shizuku não conectado")
 
-        // Localiza o Stub do AIDL (tenta pacote novo, depois antigo)
         val stub = try {
             Class.forName("rikka.shizuku.server.IShizukuService\$Stub")
         } catch (e: ClassNotFoundException) {
@@ -301,7 +305,6 @@ class MainActivity : Activity() {
         }
         val remote = newProcess.invoke(service, cmd, null, null)
 
-        // Construtor package-private: ShizukuRemoteProcess(IRemoteProcess)
         val ctor = ShizukuRemoteProcess::class.java.declaredConstructors.first {
             it.parameterTypes.size == 1 &&
                 it.parameterTypes[0].simpleName == "IRemoteProcess"
@@ -318,7 +321,8 @@ class MainActivity : Activity() {
         val conteudo = scriptConteudo ?: return
         val tmp = "/data/local/tmp/luks_script.sh"
 
-        // Terminal em diálogo, saída ao vivo
+        // ===== Terminal com ENTRADA (estilo MT Manager) =====
+
         val tv = TextView(this).apply {
             setTextColor(0xFFB8F5C0.toInt())
             typeface = Typeface.MONOSPACE
@@ -326,12 +330,75 @@ class MainActivity : Activity() {
             setPadding(px(12), px(12), px(12), px(12))
             text = "Script: $scriptNome\nModo: ${if (modo == "root") "Root" else "Shizuku"}\n\n"
         }
+
         val scroll = ScrollView(this).apply { addView(tv) }
-        AlertDialog.Builder(this)
+
+        val etInput = EditText(this).apply {
+            hint = "Digite aqui e envie..."
+            setTextColor(Color.WHITE)
+            setHintTextColor(0xFF6E5A8A.toInt())
+            maxLines = 1
+            textSize = 13f
+        }
+
+        val btnEnviar = Button(this).apply {
+            text = "Enviar ➤"
+            setTextColor(Color.WHITE)
+            setAllCaps(false)
+            textSize = 13f
+            background = GradientDrawable().apply {
+                setColor(0xFF2E7D5B.toInt())
+                cornerRadius = px(10).toFloat()
+            }
+        }
+
+        val linhaInput = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(px(8), px(6), px(8), px(8))
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        linhaInput.addView(
+            etInput,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        linhaInput.addView(btnEnviar)
+
+        val caixa = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(0xFF0D0514.toInt())
+        }
+        caixa.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, px(380)
+            )
+        )
+        caixa.addView(linhaInput)
+
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Terminal")
-            .setView(scroll)
+            .setView(caixa)
             .setPositiveButton("Fechar", null)
             .show()
+
+        // Botão ENVIAR: escreve no stdin do processo (igual MT Manager)
+        btnEnviar.setOnClickListener {
+            val proc = procAtual
+            val texto = etInput.text.toString().trim()
+            if (proc == null) {
+                Toast.makeText(this, "Nenhum script em execução", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            if (texto.isEmpty()) return@setOnClickListener
+            anexar(tv, "> $texto\n")   // eco do que você digitou
+            etInput.setText("")
+            try {
+                proc.outputStream.write((texto + "\n").toByteArray())
+                proc.outputStream.flush()
+            } catch (e: Exception) {
+                anexar(tv, "[processo encerrado — não foi possível enviar]\n")
+            }
+        }
 
         Thread {
             try {
@@ -350,11 +417,13 @@ class MainActivity : Activity() {
                     shizukuProcess(arrayOf("sh", "-c", "chmod 777 $tmp"))
                 chmod.waitFor()
 
-                // 3) Executar
+                // 3) Executar (stdin fica ABERTO para o usuário responder o script)
                 val proc = if (modo == "root")
                     Runtime.getRuntime().exec(arrayOf("su", "-c", "sh $tmp"))
                 else
                     shizukuProcess(arrayOf("sh", tmp))
+
+                procAtual = proc   // habilita o botão Enviar
 
                 val t1 = Thread {
                     proc.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") }
@@ -365,8 +434,11 @@ class MainActivity : Activity() {
                 t1.start(); t2.start()
                 proc.waitFor()
                 t1.join(); t2.join()
+
+                procAtual = null   // desabilita o envio
                 anexar(tv, "\n[finalizado — código ${proc.exitValue()}]\n")
             } catch (e: Exception) {
+                procAtual = null
                 anexar(tv, "\n[ERRO] ${e.message}\n")
             }
         }.start()
