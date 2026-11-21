@@ -106,7 +106,7 @@ class MainActivity : Activity() {
         col.addView(botao("⚡  Executar via Shizuku", 0xFF2E7D5B.toInt()) { acaoShizuku() }, lb)
         col.addView(botao("🧱  Executar via Root", 0xFF8C3B2E.toInt()) { acaoRoot() }, lb)
         col.addView(TextView(this).apply {
-            text = "📜 Executa o arquivo ORIGINAL no lugar dele.\nTerminal aceita respostas de menu."
+            text = "📜 Corrige Android/data p/ /data/media automaticamente.\nTerminal aceita respostas de menu."
             setTextColor(0xFF6E5A8A.toInt())
             textSize = 12f
             gravity = Gravity.CENTER
@@ -325,16 +325,21 @@ class MainActivity : Activity() {
     private fun executarArquivoDireto(caminho: String) {
         val dir = caminho.substringBeforeLast("/")
         val nome = caminho.substringAfterLast("/")
-        terminal("Arquivo: $nome\nLocal: $caminho (Root direto)") { tv ->
+        val fixado = "$dir/.luks_fix.sh"
+        terminal("Arquivo: $nome\nCorreção Android/data → /data/media/0") { tv ->
             try {
-                anexar(tv, "[diagnóstico: caçando pdcache como Root...]\n")
+                anexar(tv, "[1/3] Corrigindo caminhos do script (FUSE bypass)...\n")
+                val fix = Runtime.getRuntime().exec(arrayOf("su", "-c",
+                    "sed 's|/storage/emulated/0/Android/data|/data/media/0/Android/data|g; s|/sdcard/Android/data|/data/media/0/Android/data|g; s|/mnt/sdcard/Android/data|/data/media/0/Android/data|g' '$caminho' > $fixado && chmod 777 $fixado"))
+                fix.waitFor()
+                anexar(tv, "[2/3] Diagnóstico do pdcache...\n")
                 val diag = Runtime.getRuntime().exec(arrayOf("su", "-c",
-                    "ls /storage/emulated/0/Android/data 2>&1 | head -6; echo '---pdcache---'; find /storage/emulated/0/Android/data /data/data -maxdepth 4 -type d -name 'pdcache' 2>/dev/null; echo '---fim---'"))
+                    "echo '--- script procura:'; grep -n pdcache '$caminho' | head -4; echo '--- pdcache real:'; find /data/media/0/Android/data -maxdepth 5 -type d -name 'pdcache' 2>/dev/null | head -5; echo '--- apps com data:'; ls /data/media/0/Android/data 2>/dev/null | head -10; echo '---fim---'"))
                 diag.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") }
                 diag.waitFor()
-                anexar(tv, "\n[executando com ambiente de sistema (MT style)...]\n\n")
+                anexar(tv, "\n[3/3] Executando versão corrigida...\n\n")
                 val p = Runtime.getRuntime().exec(arrayOf("su", "-c",
-                    "export EXTERNAL_STORAGE=/sdcard; export HOME=/data/local/tmp; export TERM=xterm; cd '$dir' && sh '$caminho'"))
+                    "export EXTERNAL_STORAGE=/sdcard; export HOME=/data/local/tmp; export TERM=xterm; cd '$dir' && sh $fixado"))
                 procAtual = p
                 val t1 = Thread { p.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") } }
                 val t2 = Thread { p.errorStream.bufferedReader().forEachLine { anexar(tv, "[erro] $it\n") } }
