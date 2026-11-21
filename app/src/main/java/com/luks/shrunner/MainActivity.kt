@@ -38,6 +38,11 @@ class MainActivity : Activity() {
     private var scriptConteudo: String? = null
     private var scriptNome: String? = null
 
+    // Transporte de arquivos
+    private var transportUri: Uri? = null
+    private var transportNome: String? = null
+    private var aguardandoAcesso = false
+
     // Processo em execução (para enviar input do usuário)
     @Volatile
     private var procAtual: Process? = null
@@ -45,6 +50,18 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         montarTela()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Se o usuário concedeu "Todos os arquivos" nas configurações e voltou
+        if (aguardandoAcesso && temAcessoArquivos()) {
+            aguardandoAcesso = false
+            tvStatus.text = "🔓 Acesso total: ATIVO"
+            if (transportUri != null) {
+                navegador(Environment.getExternalStorageDirectory(), true)
+            }
+        }
     }
 
     // ==================== INTERFACE ====================
@@ -96,15 +113,15 @@ class MainActivity : Activity() {
         ).apply { bottomMargin = px(28) }
 
         val lpBotao = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, px(56)
-        ).apply { bottomMargin = px(12) }
+            LinearLayout.LayoutParams.MATCH_PARENT, px(52)
+        ).apply { bottomMargin = px(10) }
 
         val dica = TextView(this).apply {
-            text = "Carregue um script antes de executar.\nScripts com menu (ex: digite 1) aceitam sua resposta no terminal."
+            text = "Scripts com menu aceitam resposta no terminal.\nUse Transportar p/ copiar arquivos p/ Android/data."
             setTextColor(0xFF6E5A8A.toInt())
             textSize = 12f
             gravity = Gravity.CENTER
-            setPadding(0, px(16), 0, 0)
+            setPadding(0, px(14), 0, 0)
         }
 
         coluna.addView(titulo)
@@ -112,6 +129,8 @@ class MainActivity : Activity() {
         coluna.addView(tvStatus, lpStatus)
         coluna.addView(botao("📂  Carregar script (.sh)", 0xFF7B2FBE.toInt()) { abrirSeletor() }, lpBotao)
         coluna.addView(botao("🗂️  Gerenciador próprio", 0xFF4B1D6E.toInt()) { abrirGerenciadorProprio() }, lpBotao)
+        coluna.addView(botao("📦  Transportar arquivo (copiar p/ pasta)", 0xFF8C6A2E.toInt()) { transportar() }, lpBotao)
+        coluna.addView(botao("🔓  Ativar acesso total aos arquivos", 0xFF1D5C8C.toInt()) { acaoPermissao() }, lpBotao)
         coluna.addView(botao("⚡  Executar via Shizuku", 0xFF2E7D5B.toInt()) { acaoShizuku() }, lpBotao)
         coluna.addView(botao("🧱  Executar via Root", 0xFF8C3B2E.toInt()) { acaoRoot() }, lpBotao)
         coluna.addView(dica)
@@ -129,7 +148,63 @@ class MainActivity : Activity() {
         setOnClickListener { acao() }
     }
 
-    // ==================== CARREGAR SCRIPT ====================
+    // ==================== PERMISSÃO DE ARQUIVOS ====================
+
+    private fun acaoPermissao() {
+        if (temAcessoArquivos()) {
+            tvStatus.text = "🔓 Acesso total: ATIVO"
+            Toast.makeText(this, "Acesso total já está ativo ✅", Toast.LENGTH_SHORT).show()
+        } else {
+            pedirAcessoArquivos()
+        }
+    }
+
+    private fun temAcessoArquivos(): Boolean {
+        return if (Build.VERSION.SDK_INT >= 30) {
+            Environment.isExternalStorageManager()
+        } else {
+            checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) ==
+                PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    private fun pedirAcessoArquivos() {
+        aguardandoAcesso = true
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                )
+            } catch (e: Exception) {
+                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            }
+            Toast.makeText(this, "Conceda 'Todos os arquivos' e volte ao app", Toast.LENGTH_LONG).show()
+        } else {
+            requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), 100)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 100 && grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
+            aguardandoAcesso = false
+            tvStatus.text = "🔓 Acesso total: ATIVO"
+            if (transportUri != null) {
+                navegador(Environment.getExternalStorageDirectory(), true)
+            } else {
+                navegador(Environment.getExternalStorageDirectory())
+            }
+        }
+    }
+
+    // ==================== CARREGAR SCRIPT (.sh) ====================
 
     private fun abrirSeletor() {
         try {
@@ -150,45 +225,67 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun temAcessoArquivos(): Boolean {
-        return if (Build.VERSION.SDK_INT >= 30) {
-            Environment.isExternalStorageManager()
-        } else {
-            checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) ==
-                PackageManager.PERMISSION_GRANTED
+    // ==================== TRANSPORTAR ARQUIVO ====================
+
+    private fun transportar() {
+        try {
+            val i = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            i.addCategory(Intent.CATEGORY_OPENABLE)
+            i.type = "*/*"
+            startActivityForResult(i, 202)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Nenhum gerenciador encontrado", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun pedirAcessoArquivos() {
-        if (Build.VERSION.SDK_INT >= 30) {
-            try {
-                startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                        Uri.parse("package:$packageName")
-                    )
-                )
-            } catch (e: Exception) {
-                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+    private fun colarArquivo(destino: File) {
+        val uri = transportUri
+        val nome = transportNome
+        if (uri == null || nome == null) {
+            Toast.makeText(this, "Nenhum arquivo selecionado", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val alvo = File(destino, nome)
+            contentResolver.openInputStream(uri)?.use { entrada ->
+                alvo.outputStream().use { saida -> entrada.copyTo(saida) }
             }
-            Toast.makeText(this, "Conceda 'Todos os arquivos' e volte", Toast.LENGTH_LONG).show()
-        } else {
-            requestPermissions(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), 100)
+            transportUri = null
+            transportNome = null
+            tvStatus.text = "📦 Copiado: ${alvo.absolutePath}"
+            Toast.makeText(this, "✅ Copiado para:\n${alvo.absolutePath}", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Falha ao copiar: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<String>, grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 100 && grantResults.isNotEmpty() &&
-            grantResults[0] == PackageManager.PERMISSION_GRANTED
-        ) {
-            navegador(Environment.getExternalStorageDirectory())
-        }
+    private fun criarPasta(pasta: File, modoDestino: Boolean) {
+        val input = EditText(this)
+        input.hint = "nome da nova pasta"
+        AlertDialog.Builder(this)
+            .setTitle("Nova pasta")
+            .setMessage("Criar dentro de:\n${pasta.absolutePath}")
+            .setView(input)
+            .setPositiveButton("Criar") { _, _ ->
+                val nome = input.text.toString().trim()
+                if (nome.isNotEmpty()) {
+                    val nova = File(pasta, nome)
+                    if (nova.mkdirs() || nova.exists()) {
+                        Toast.makeText(this, "Pasta criada ✅", Toast.LENGTH_SHORT).show()
+                        navegador(nova, modoDestino)
+                    } else {
+                        Toast.makeText(this, "Falha ao criar (sem permissão?)", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
-    private fun navegador(pasta: File) {
+    // ==================== NAVEGADOR ====================
+
+    // modoDestino = false → seleciona .sh | true → escolher pasta para colar
+    private fun navegador(pasta: File, modoDestino: Boolean = false) {
         val itens = pasta.listFiles()
         if (itens == null) {
             Toast.makeText(this, "Sem acesso: ${pasta.absolutePath}", Toast.LENGTH_SHORT).show()
@@ -198,18 +295,40 @@ class MainActivity : Activity() {
             compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase() }
         )
         val temPai = pasta.parentFile != null
+
         val nomes = ArrayList<String>()
         if (temPai) nomes.add("⬆️  ..")
-        ordenados.forEach { nomes.add(if (it.isDirectory) "📁 ${it.name}" else "📜 ${it.name}") }
+        if (modoDestino) {
+            nomes.add("✅  COPIAR ARQUIVO PARA ESTA PASTA")
+            nomes.add("➕  Criar pasta aqui")
+            nomes.add("🎯  Ir para Android/data")
+        }
+        ordenados.forEach { nomes.add(if (it.isDirectory) "📁 ${it.name}" else "📄 ${it.name}") }
+
+        val extras = if (modoDestino) 3 else 0
+        val offset = (if (temPai) 1 else 0) + extras
+        val idxColar = if (temPai) 1 else 0
+        val idxCriar = idxColar + 1
+        val idxData = idxColar + 2
 
         AlertDialog.Builder(this)
             .setTitle(pasta.absolutePath)
             .setItems(nomes.toTypedArray()) { _, pos ->
                 when {
-                    temPai && pos == 0 -> navegador(pasta.parentFile!!)
+                    temPai && pos == 0 -> navegador(pasta.parentFile!!, modoDestino)
+                    modoDestino && pos == idxColar -> colarArquivo(pasta)
+                    modoDestino && pos == idxCriar -> criarPasta(pasta, modoDestino)
+                    modoDestino && pos == idxData -> {
+                        val data = File(Environment.getExternalStorageDirectory(), "Android/data")
+                        if (data.exists()) navegador(data, true)
+                        else Toast.makeText(this, "Android/data não encontrado", Toast.LENGTH_SHORT).show()
+                    }
                     else -> {
-                        val alvo = ordenados[pos - if (temPai) 1 else 0]
-                        if (alvo.isDirectory) navegador(alvo)
+                        val alvo = ordenados[pos - offset]
+                        if (alvo.isDirectory) navegador(alvo, modoDestino)
+                        else if (modoDestino) {
+                            Toast.makeText(this, "Use 'COPIAR PARA ESTA PASTA'", Toast.LENGTH_SHORT).show()
+                        }
                         else if (alvo.name.endsWith(".sh")) {
                             try {
                                 selecionar(alvo.readText(), alvo.name)
@@ -226,16 +345,35 @@ class MainActivity : Activity() {
             .show()
     }
 
+    // ==================== RESULTADOS ====================
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 101 && resultCode == RESULT_OK) {
-            val uri = data?.data ?: return
+        if (resultCode != RESULT_OK || data == null) return
+        val uri = data.data ?: return
+
+        if (requestCode == 101) {
+            // Script .sh vindo de outro gerenciador
             try {
                 val nome = queryNome(uri) ?: "script.sh"
                 val conteudo = contentResolver.openInputStream(uri)
                     ?.bufferedReader()?.use { it.readText() }
                 if (conteudo != null) selecionar(conteudo, nome)
                 else Toast.makeText(this, "Não foi possível ler o arquivo", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Falha: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        } else if (requestCode == 202) {
+            // Arquivo para transporte
+            try {
+                transportNome = queryNome(uri)
+                transportUri = uri
+                if (temAcessoArquivos()) {
+                    navegador(Environment.getExternalStorageDirectory(), true)
+                } else {
+                    Toast.makeText(this, "Ative o acesso total para escolher o destino", Toast.LENGTH_LONG).show()
+                    pedirAcessoArquivos()
+                }
             } catch (e: Exception) {
                 Toast.makeText(this, "Falha: ${e.message}", Toast.LENGTH_LONG).show()
             }
@@ -375,13 +513,12 @@ class MainActivity : Activity() {
         )
         caixa.addView(linhaInput)
 
-        val dialog = AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("Terminal")
             .setView(caixa)
             .setPositiveButton("Fechar", null)
             .show()
 
-        // Botão ENVIAR: escreve no stdin do processo (igual MT Manager)
         btnEnviar.setOnClickListener {
             val proc = procAtual
             val texto = etInput.text.toString().trim()
@@ -389,58 +526,4 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Nenhum script em execução", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (texto.isEmpty()) return@setOnClickListener
-            anexar(tv, "> $texto\n")   // eco do que você digitou
-            etInput.setText("")
-            try {
-                proc.outputStream.write((texto + "\n").toByteArray())
-                proc.outputStream.flush()
-            } catch (e: Exception) {
-                anexar(tv, "[processo encerrado — não foi possível enviar]\n")
-            }
-        }
-
-        Thread {
-            try {
-                // 1) Enviar o script para /data/local/tmp via stdin
-                val escritor = if (modo == "root")
-                    Runtime.getRuntime().exec(arrayOf("su", "-c", "cat > $tmp"))
-                else
-                    shizukuProcess(arrayOf("sh", "-c", "cat > $tmp"))
-                escritor.outputStream.use { it.write(conteudo.toByteArray()) }
-                escritor.waitFor()
-
-                // 2) Dar permissão de execução
-                val chmod = if (modo == "root")
-                    Runtime.getRuntime().exec(arrayOf("su", "-c", "chmod 777 $tmp"))
-                else
-                    shizukuProcess(arrayOf("sh", "-c", "chmod 777 $tmp"))
-                chmod.waitFor()
-
-                // 3) Executar (stdin fica ABERTO para o usuário responder o script)
-                val proc = if (modo == "root")
-                    Runtime.getRuntime().exec(arrayOf("su", "-c", "sh $tmp"))
-                else
-                    shizukuProcess(arrayOf("sh", tmp))
-
-                procAtual = proc   // habilita o botão Enviar
-
-                val t1 = Thread {
-                    proc.inputStream.bufferedReader().forEachLine { anexar(tv, "$it\n") }
-                }
-                val t2 = Thread {
-                    proc.errorStream.bufferedReader().forEachLine { anexar(tv, "[erro] $it\n") }
-                }
-                t1.start(); t2.start()
-                proc.waitFor()
-                t1.join(); t2.join()
-
-                procAtual = null   // desabilita o envio
-                anexar(tv, "\n[finalizado — código ${proc.exitValue()}]\n")
-            } catch (e: Exception) {
-                procAtual = null
-                anexar(tv, "\n[ERRO] ${e.message}\n")
-            }
-        }.start()
-    }
-}
+            if (t
